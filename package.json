@@ -1,0 +1,45 @@
+{
+  "name": "weixin-global-integration",
+  "version": "1.0.0",
+  "description": "Global WeChat integration for Claude Code — intercept tool calls, redirect questions, and track progress via WeChat",
+  "main": "lib/weixin-client.mjs",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "install": "node install.js",
+    "daemon:start": "node daemon/progress-daemon.mjs start",
+    "daemon:stop": "node daemon/progress-daemon.mjs stop",
+    "daemon:status": "node daemon/progress-daemon.mjs status",
+    "progress": "node scripts/query-progress.mjs",
+    "send": "node scripts/send-weixin.mjs",
+    "ask": "node scripts/ask-weixin.mjs",
+    "query-progress": "node scripts/query-progress.mjs"
+  },
+  "files": [
+    "lib/",
+    "hooks/",
+    "scripts/",
+    "daemon/",
+    "config/",
+    "install.js",
+    "SKILL.md",
+    "README.md",
+    "README_CN.md"
+  ],
+  "keywords": [
+    "claude-code",
+    "wechat",
+    "weixin",
+    "hooks",
+    "integration",
+    "permission-gate"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  }
+}
