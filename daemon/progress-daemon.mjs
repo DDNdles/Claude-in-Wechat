@@ -280,45 +280,33 @@ function clearPendingProject() {
 }
 
 /**
- * Set the bridge's working directory to the project folder so the user's
- * next WeChat message starts an interactive Claude session there.
- * Hooks (AskUserQuestion, danger guard, error notify, stop notify) work normally.
+ * Launch a real Claude Code interactive session in a visible PowerShell window.
+ * The task is passed as the initial prompt. Hooks handle WeChat decisions.
  */
 async function launchClaudeForProject(projectFolder, projectName, task, toUserId, account, contextToken) {
-  log(`Setting bridge workdir for project "${projectName}": ${projectFolder}`);
+  log(`Launching Claude for project "${projectName}": ${task.slice(0, 80)}`);
 
-  // Write initial progress state
-  writeProgressState('Claude', `项目就绪: ${projectName}`, projectFolder, 0, 0);
+  writeProgressState('Claude', `启动: ${projectName}`, projectFolder, 0, 0);
 
-  // Update bridge binding to use the new project folder
-  const bindingsFile = path.join(CTI_HOME, 'data', 'bindings.json');
-  const chatId = `weixin::${account.accountId}::${toUserId}`;
-  try {
-    const bindings = JSON.parse(fs.readFileSync(bindingsFile, 'utf-8'));
-    const key = `weixin:${chatId}`;
-    if (bindings[key]) {
-      bindings[key].workingDirectory = projectFolder;
-      fs.writeFileSync(bindingsFile, JSON.stringify(bindings, null, 2));
-      log(`Updated bridge binding workdir → ${projectFolder}`);
-    }
-  } catch (err) {
-    log(`Failed to update bridge binding: ${err.message}`);
-  }
+  // Build the PowerShell command: cd to project, run claude with task as prompt
+  // claude "prompt" = interactive mode with initial prompt (NOT -p one-shot)
+  const escapedTask = task.replace(/"/g, '`"');
+  const psCmd = `start "Claude - ${projectName}" powershell -NoExit -Command "cd '${projectFolder}'; Write-Host 'Claude Code - ${projectName}' -ForegroundColor Cyan; claude '${escapedTask}'"`;
 
-  // Launch a visible PowerShell window on desktop for monitoring
-  const psScript = `cd "${projectFolder}"; Write-Host "========================================" -ForegroundColor Cyan; Write-Host "  Claude Code - ${projectName}" -ForegroundColor Cyan; Write-Host "  ${projectFolder}" -ForegroundColor Cyan; Write-Host "========================================" -ForegroundColor Cyan; Write-Host ""; Write-Host "Claude 正在工作中..."; Write-Host "可通过微信查询进度、发送决策"; Write-Host ""`;
-  const psCmd = `start "Claude - ${projectName}" powershell -NoExit -Command "${psScript.replace(/"/g, '\\"')}"`;
   try {
     exec(psCmd, { windowsHide: false });
-    log(`PowerShell window launched for ${projectName}`);
+    log(`Claude PowerShell launched for ${projectName}`);
   } catch (err) {
-    log(`Failed to launch PowerShell: ${err.message}`);
+    log(`Failed to launch Claude: ${err.message}`);
+    try { await sendMessage(account, toUserId, `❌ 无法启动 Claude: ${err.message}`, contextToken); } catch {}
+    clearPendingProject();
+    return;
   }
 
-  // Tell user the bridge is ready
+  // Notify user
   try {
     await sendMessage(account, toUserId,
-      `✅ 项目「${projectName}」已就绪\n📁 ${projectFolder}\n\n💻 桌面已打开监控窗口\n📱 现在在这个聊天窗口说出你的任务`,
+      `✅ 项目「${projectName}」已启动\n📁 ${projectFolder}\n🖥️ 桌面已打开 Claude Code 窗口\n📱 微信可查进度、做决策`,
       contextToken);
   } catch { /* ok */ }
 
