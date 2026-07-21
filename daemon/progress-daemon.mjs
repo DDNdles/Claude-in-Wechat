@@ -496,6 +496,8 @@ async function runDaemon() {
           if (pending && text.length > 3) {
             log(`Pending project "${pending.name}" — treating as task: "${text.slice(0, 80)}"`);
             // Launch Claude in background (don't await — let it run while we keep polling)
+            // Send acknowledgment before launching
+            sendMessage(account, toUserId, `收到，正在为「${pending.name}」启动...`, contextToken).catch(() => {});
             launchClaudeForProject(
               pending.folder, pending.name, text,
               toUserId, account, contextToken
@@ -526,6 +528,13 @@ async function runDaemon() {
           try {
             await sendMessage(account, toUserId, reply, contextToken);
             log(`Reply sent (${reply.length} chars)`);
+            // Send acknowledgment for commands
+            const ackMap = { 'list-projects': '收到，已列出项目', 'progress': '收到，已查询进度', 'switch-chat': '收到', 'switch-project': '收到', 'help': '收到', 'register-project': '收到' };
+            const ack = ackMap[cmd.cmd];
+            if (ack) {
+              await new Promise(r => setTimeout(r, 500));
+              await sendMessage(account, toUserId, ack, contextToken).catch(() => {});
+            }
           } catch (err) {
             log(`Failed to send reply: ${err.message}`);
           }
