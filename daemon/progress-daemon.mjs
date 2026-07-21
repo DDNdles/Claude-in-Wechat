@@ -280,73 +280,39 @@ function clearPendingProject() {
 }
 
 /**
- * Launch Claude Code in the pending project folder with the task description.
- * Uses `claude -p` (one-shot mode) — hooks still fire for progress/notifications.
+ * Set the bridge's working directory to the project folder so the user's
+ * next WeChat message starts an interactive Claude session there.
+ * Hooks (AskUserQuestion, danger guard, error notify, stop notify) work normally.
  */
 async function launchClaudeForProject(projectFolder, projectName, task, toUserId, account, contextToken) {
-  log(`Launching Claude for project "${projectName}": ${task.slice(0, 80)}`);
+  log(`Setting bridge workdir for project "${projectName}": ${projectFolder}`);
 
   // Write initial progress state
-  writeProgressState('Claude', `新建项目: ${projectName}`, projectFolder, 0, 4);
+  writeProgressState('Claude', `项目就绪: ${projectName}`, projectFolder, 0, 0);
 
-  // Notify user
+  // Update bridge binding to use the new project folder
+  const bindingsFile = path.join(CTI_HOME, 'data', 'bindings.json');
+  const chatId = `weixin::${account.accountId}::${toUserId}`;
+  try {
+    const bindings = JSON.parse(fs.readFileSync(bindingsFile, 'utf-8'));
+    const key = `weixin:${chatId}`;
+    if (bindings[key]) {
+      bindings[key].workingDirectory = projectFolder;
+      fs.writeFileSync(bindingsFile, JSON.stringify(bindings, null, 2));
+      log(`Updated bridge binding workdir → ${projectFolder}`);
+    }
+  } catch (err) {
+    log(`Failed to update bridge binding: ${err.message}`);
+  }
+
+  // Tell user the bridge is ready
   try {
     await sendMessage(account, toUserId,
-      `🚀 正在为「${projectName}」启动 Claude...\n📁 ${projectFolder}\n📝 ${task.slice(0, 100)}`,
+      `✅ 项目「${projectName}」已就绪\n📁 ${projectFolder}\n\n现在直接在这个聊天窗口说出你的任务，Claude 会交互式执行（包括微信抉择、进度追踪等）。`,
       contextToken);
   } catch { /* ok */ }
 
-  // Launch Claude in one-shot mode
-  const claudeBin = process.env.CLAUDE_BIN ||
-    (process.platform === 'win32' ? 'claude' : 'claude');
-
-  return new Promise((resolve) => {
-    // Save output to project folder
-    const outputFile = path.join(projectFolder, 'output.md');
-    const outStream = fs.openSync(outputFile, 'w');
-
-    const child = spawn(claudeBin, ['-p', task], {
-      cwd: projectFolder,
-      stdio: ['ignore', outStream, 'pipe'],
-      env: { ...process.env },
-      timeout: 600_000, // 10 min max
-    });
-
-    let stderr = '';
-
-    child.stderr?.on('data', (chunk) => {
-      stderr += chunk.toString();
-    });
-
-    child.on('close', async (code) => {
-      try { fs.closeSync(outStream); } catch {}
-      log(`Claude exited with code ${code} for project "${projectName}"`);
-      if (stderr) log(`Claude stderr: ${stderr.slice(0, 500)}`);
-      const success = code === 0;
-
-      const errPreview = stderr.split('\n').filter(l => /error|Error|失败/i.test(l)).slice(0, 3).join('\n') || stderr.slice(-200);
-      const summary = success
-        ? `✅ 项目「${projectName}」任务完成\n📁 ${projectFolder}\n📄 输出: ${outputFile}`
-        : `❌ 项目「${projectName}」出错 (exit ${code})\n📁 ${projectFolder}\n${errPreview || '(无输出)'}`;
-
-      try {
-        await sendMessage(account, toUserId, summary, contextToken);
-      } catch { /* ok */ }
-
-      clearPendingProject();
-      resolve({ success, code, projectFolder });
-    });
-
-    child.on('error', async (err) => {
-      log(`Claude launch failed: ${err.message}`);
-      try {
-        await sendMessage(account, toUserId,
-          `❌ 无法启动 Claude: ${err.message}`, contextToken);
-      } catch { /* ok */ }
-      clearPendingProject();
-      resolve({ success: false, error: err.message, projectFolder });
-    });
-  });
+  clearPendingProject();
 }
 
 // ── Subcommands ──
@@ -495,14 +461,12 @@ async function runDaemon() {
           if (pending && text.length > 3) {
             log(`Pending project "${pending.name}" — treating as task: "${text.slice(0, 80)}"`);
             // Launch Claude in background (don't await — let it run while we keep polling)
-            // Send acknowledgment before launching
-            sendMessage(account, toUserId, `收到，正在为「${pending.name}」启动...`, contextToken).catch(() => {});
+            // Send acknowledgment and set up bridge for project
+            sendMessage(account, toUserId, `收到，正在为「${pending.name}」准备环境...`, contextToken).catch(() => {});
             launchClaudeForProject(
               pending.folder, pending.name, text,
               toUserId, account, contextToken
-            ).then(() => {
-              log(`Claude session for "${pending.name}" completed`);
-            });
+            );
             continue;
           }
           // Unknown message — silently ignore
