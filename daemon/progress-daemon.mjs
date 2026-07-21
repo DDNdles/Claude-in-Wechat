@@ -305,10 +305,20 @@ async function launchClaudeForProject(projectFolder, projectName, task, toUserId
     log(`Failed to update bridge binding: ${err.message}`);
   }
 
+  // Launch a visible PowerShell window on desktop for monitoring
+  const psScript = `cd "${projectFolder}"; Write-Host "========================================" -ForegroundColor Cyan; Write-Host "  Claude Code - ${projectName}" -ForegroundColor Cyan; Write-Host "  ${projectFolder}" -ForegroundColor Cyan; Write-Host "========================================" -ForegroundColor Cyan; Write-Host ""; Write-Host "Claude 正在工作中..."; Write-Host "可通过微信查询进度、发送决策"; Write-Host ""`;
+  const psCmd = `start "Claude - ${projectName}" powershell -NoExit -Command "${psScript.replace(/"/g, '\\"')}"`;
+  try {
+    exec(psCmd, { windowsHide: false });
+    log(`PowerShell window launched for ${projectName}`);
+  } catch (err) {
+    log(`Failed to launch PowerShell: ${err.message}`);
+  }
+
   // Tell user the bridge is ready
   try {
     await sendMessage(account, toUserId,
-      `✅ 项目「${projectName}」已就绪\n📁 ${projectFolder}\n\n现在直接在这个聊天窗口说出你的任务，Claude 会交互式执行（包括微信抉择、进度追踪等）。`,
+      `✅ 项目「${projectName}」已就绪\n📁 ${projectFolder}\n\n💻 桌面已打开监控窗口\n📱 现在在这个聊天窗口说出你的任务`,
       contextToken);
   } catch { /* ok */ }
 
