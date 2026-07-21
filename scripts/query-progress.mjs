@@ -100,6 +100,13 @@ function main() {
       const folder = progress.cwd.split(/[/\\]/).pop() || progress.cwd;
       console.log(`   目录: ${folder}`);
     }
+    if (typeof progress.step === 'number' && typeof progress.totalSteps === 'number' && progress.totalSteps > 0) {
+      const pct = Math.min(100, Math.round((progress.step / progress.totalSteps) * 100));
+      const barLen = 10;
+      const filled = Math.round((pct / 100) * barLen);
+      const bar = '█'.repeat(filled) + '░'.repeat(barLen - filled);
+      console.log(`   进度: ${bar} ${pct}% (${progress.step}/${progress.totalSteps})`);
+    }
   } else {
     console.log('⚪ 当前无活跃操作');
   }

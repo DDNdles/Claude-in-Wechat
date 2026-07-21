@@ -28,6 +28,7 @@ import {
   sendMessage,
   pollUpdates,
   readProgressState,
+  writeProgressState,
   CTI_HOME,
 } from '../lib/weixin-client.mjs';
 import {
@@ -129,6 +130,15 @@ function buildProgressReport() {
       const folder = progress.cwd.split(/[/\\]/).pop() || progress.cwd;
       lines.push(`   目录: ${folder}`);
     }
+    // Progress bar
+    if (typeof progress.step === 'number' && typeof progress.totalSteps === 'number' && progress.totalSteps > 0) {
+      const pct = Math.min(100, Math.round((progress.step / progress.totalSteps) * 100));
+      const barLen = 10;
+      const filled = Math.round((pct / 100) * barLen);
+      const bar = '█'.repeat(filled) + '░'.repeat(barLen - filled);
+      lines.push('');
+      lines.push(`   进度: ${bar} ${pct}% (${progress.step}/${progress.totalSteps})`);
+    }
   } else {
     lines.push('⚪ 当前无活跃操作（5 分钟内无工具调用）');
     lines.push('   可能 Claude 正在思考或已暂停');
@@ -172,6 +182,10 @@ function matchCommand(text) {
     return { cmd: 'help' };
   }
 
+  // New project: 新建项目：XXX, 新项目：XXX, 创建项目：XXX
+  const newProj = t.match(/^(?:新建|新|创建)项目[：:]\s*(.+)$/);
+  if (newProj) return { cmd: 'new-project', name: newProj[1].trim() };
+
   return null;
 }
 
@@ -205,16 +219,132 @@ function handleCommand(cmd, cwd) {
         '📋 可用指令：',
         '',
         '查询进度 — 查看当前项目进度',
+        '新建项目：名称 — 创建新项目并开始工作',
         '列出项目 — 查看所有注册项目',
         '切换到N号项目 — 切换到第N个项目',
         '切换到聊天 — 进入聊天模式（不自动回复）',
-        '注册项目 <名称> — 注册当前项目',
         '帮助 — 显示此帮助',
+      ].join('\n');
+    }
+    case 'new-project': {
+      const projectsDir = path.join(process.env.HOME || process.env.USERPROFILE, '.claude', 'projects');
+      const projFolder = path.join(projectsDir, cmd.name);
+      if (!fs.existsSync(projectsDir)) fs.mkdirSync(projectsDir, { recursive: true });
+
+      if (fs.existsSync(projFolder)) {
+        return `⚠️ 项目「${cmd.name}」已存在于 ${projFolder}`;
+      }
+
+      fs.mkdirSync(projFolder, { recursive: true });
+      // Set as pending project awaiting task description
+      setPendingProject(cmd.name, projFolder);
+
+      // Register in project context
+      registerProject(cmd.name, projFolder);
+      const ctx = loadContext();
+      const projId = Object.keys(ctx.projects).find(k => ctx.projects[k].cwd === projFolder);
+
+      return [
+        `✅ 项目「${cmd.name}」已创建`,
+        `📁 ${projFolder}`,
+        '',
+        '请回复你想让我做什么，我会立即开始执行。',
+        `（项目编号: ${projId}）`,
       ].join('\n');
     }
     default:
       return null;
   }
+}
+
+// ── Pending project (awaiting task description) ──
+
+const PENDING_FILE = path.join(CTI_HOME, 'runtime', 'pending-project.json');
+
+function setPendingProject(name, folder) {
+  const dir = path.dirname(PENDING_FILE);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(PENDING_FILE, JSON.stringify({ name, folder, createdAt: Date.now() }));
+}
+
+function getPendingProject() {
+  try {
+    const data = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf-8'));
+    if (Date.now() - data.createdAt > 600_000) return null; // 10 min expiry
+    return data;
+  } catch { return null; }
+}
+
+function clearPendingProject() {
+  try { fs.unlinkSync(PENDING_FILE); } catch { /* ok */ }
+}
+
+/**
+ * Launch Claude Code in the pending project folder with the task description.
+ * Uses `claude -p` (one-shot mode) — hooks still fire for progress/notifications.
+ */
+async function launchClaudeForProject(projectFolder, projectName, task, toUserId, account, contextToken) {
+  log(`Launching Claude for project "${projectName}": ${task.slice(0, 80)}`);
+
+  // Write initial progress state
+  writeProgressState('Claude', `新建项目: ${projectName}`, projectFolder, 0, 4);
+
+  // Notify user
+  try {
+    await sendMessage(account, toUserId,
+      `🚀 正在为「${projectName}」启动 Claude...\n📁 ${projectFolder}\n📝 ${task.slice(0, 100)}`,
+      contextToken);
+  } catch { /* ok */ }
+
+  // Launch Claude in one-shot mode
+  const claudeBin = process.env.CLAUDE_BIN ||
+    (process.platform === 'win32' ? 'claude' : 'claude');
+
+  return new Promise((resolve) => {
+    const child = spawn(claudeBin, ['-p', task, '--cwd', projectFolder, '--permission-mode', 'bypassPermissions'], {
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 600_000, // 10 min max
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString();
+      // Write progress — tool calls update it via hooks
+    });
+
+    child.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on('close', async (code) => {
+      log(`Claude exited with code ${code} for project "${projectName}"`);
+      const success = code === 0;
+
+      const summary = success
+        ? `✅ 项目「${projectName}」任务完成\n📁 ${projectFolder}`
+        : `❌ 项目「${projectName}」出错 (exit ${code})\n📁 ${projectFolder}\n错误: ${stderr.slice(-300) || '(无输出)'}`;
+
+      try {
+        await sendMessage(account, toUserId, summary, contextToken);
+      } catch { /* ok */ }
+
+      clearPendingProject();
+      resolve({ success, code, projectFolder });
+    });
+
+    child.on('error', async (err) => {
+      log(`Claude launch failed: ${err.message}`);
+      try {
+        await sendMessage(account, toUserId,
+          `❌ 无法启动 Claude: ${err.message}`, contextToken);
+      } catch { /* ok */ }
+      clearPendingProject();
+      resolve({ success: false, error: err.message, projectFolder });
+    });
+  });
 }
 
 // ── Subcommands ──
@@ -358,7 +488,20 @@ async function runDaemon() {
 
         const cmd = matchCommand(text);
         if (!cmd) {
-          // Unknown message — silently ignore (especially important in chat mode)
+          // Check if there's a pending project awaiting task description
+          const pending = getPendingProject();
+          if (pending && text.length > 3) {
+            log(`Pending project "${pending.name}" — treating as task: "${text.slice(0, 80)}"`);
+            // Launch Claude in background (don't await — let it run while we keep polling)
+            launchClaudeForProject(
+              pending.folder, pending.name, text,
+              toUserId, account, contextToken
+            ).then(() => {
+              log(`Claude session for "${pending.name}" completed`);
+            });
+            continue;
+          }
+          // Unknown message — silently ignore
           log(`No command matched: "${text.slice(0, 50)}"`);
           continue;
         }

@@ -205,6 +205,19 @@ if (SKIP_SETTINGS) {
     },
   ];
 
+  // Build new PostToolUse hooks (error notification)
+  const newPostToolUseHooks = [
+    {
+      hooks: [
+        {
+          command: `node "${installDirUnix}/hooks/hook-error-notify.mjs"`,
+          timeout: 15,
+          type: 'command',
+        },
+      ],
+    },
+  ];
+
   // Build new Stop hooks
   const newStopHooks = [
     {
@@ -234,6 +247,9 @@ if (SKIP_SETTINGS) {
     console.log(`  ${yellow('ℹ')} Replacing existing Stop hooks (backup saved)`);
   }
   settings.hooks.Stop = newStopHooks;
+
+  // Add PostToolUse hooks (error notification)
+  settings.hooks.PostToolUse = newPostToolUseHooks;
 
   if (DRY_RUN) {
     console.log(`  ${yellow('[dry-run]')} Would update settings.json hooks`);
