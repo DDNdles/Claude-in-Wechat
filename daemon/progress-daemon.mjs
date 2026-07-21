@@ -270,7 +270,7 @@ function setPendingProject(name, folder) {
 function getPendingProject() {
   try {
     const data = JSON.parse(fs.readFileSync(PENDING_FILE, 'utf-8'));
-    if (Date.now() - data.createdAt > 600_000) return null; // 10 min expiry
+    if (Date.now() - data.createdAt > 3600_000) return null; // 1 hour expiry
     return data;
   } catch { return null; }
 }
