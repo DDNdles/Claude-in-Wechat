@@ -301,33 +301,32 @@ async function launchClaudeForProject(projectFolder, projectName, task, toUserId
     (process.platform === 'win32' ? 'claude' : 'claude');
 
   return new Promise((resolve) => {
-    const child = spawn(claudeBin, ['-p', task, '--dangerously-skip-permissions'], {
+    // Save output to project folder
+    const outputFile = path.join(projectFolder, 'output.md');
+    const outStream = fs.openSync(outputFile, 'w');
+
+    const child = spawn(claudeBin, ['-p', task], {
       cwd: projectFolder,
+      stdio: ['ignore', outStream, 'pipe'],
       env: { ...process.env },
-      stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 600_000, // 10 min max
     });
 
-    let stdout = '';
     let stderr = '';
-
-    child.stdout?.on('data', (chunk) => {
-      stdout += chunk.toString();
-      // Write progress — tool calls update it via hooks
-    });
 
     child.stderr?.on('data', (chunk) => {
       stderr += chunk.toString();
     });
 
     child.on('close', async (code) => {
+      try { fs.closeSync(outStream); } catch {}
       log(`Claude exited with code ${code} for project "${projectName}"`);
       if (stderr) log(`Claude stderr: ${stderr.slice(0, 500)}`);
       const success = code === 0;
 
       const errPreview = stderr.split('\n').filter(l => /error|Error|失败/i.test(l)).slice(0, 3).join('\n') || stderr.slice(-200);
       const summary = success
-        ? `✅ 项目「${projectName}」任务完成\n📁 ${projectFolder}`
+        ? `✅ 项目「${projectName}」任务完成\n📁 ${projectFolder}\n📄 输出: ${outputFile}`
         : `❌ 项目「${projectName}」出错 (exit ${code})\n📁 ${projectFolder}\n${errPreview || '(无输出)'}`;
 
       try {
