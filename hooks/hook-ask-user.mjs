@@ -213,6 +213,8 @@ async function main() {
       answers.push(null);
     } else {
       log(`Q${i + 1} answer: ${result.rawReply} => [${result.indices.join(',')}]`);
+      // Send acknowledgment to WeChat
+      sendWeixinMsg(account, toUserId, '收到，已记录你的选择', contextToken).catch(() => {});
       answers.push({ indices: result.indices, rawReply: result.rawReply });
     }
   }

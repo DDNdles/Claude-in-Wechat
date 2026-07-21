@@ -112,6 +112,8 @@ async function main() {
         if (matched !== null) {
           const label = options[matched];
           log(`Reply (API): "${text}" => #${matched + 1} "${label}"`);
+          // Send acknowledgment to WeChat
+          sendMessage(account, toUserId, `收到 (${matched + 1})`, contextToken).catch(() => {});
           console.log(JSON.stringify({ ok: true, index: matched, label, rawReply: text }));
           process.exit(0);
         }
@@ -135,6 +137,8 @@ async function main() {
         if (matched !== null) {
           const label = options[matched];
           log(`Reply (bridge): "${text}" => #${matched + 1} "${label}"`);
+          // Send acknowledgment to WeChat
+          sendMessage(account, toUserId, `收到 (${matched + 1})`, contextToken).catch(() => {});
           console.log(JSON.stringify({ ok: true, index: matched, label, rawReply: text }));
           process.exit(0);
         }
