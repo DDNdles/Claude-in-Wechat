@@ -138,7 +138,7 @@ async function main() {
 
   // Pass through non-AskUserQuestion tools immediately
   if (toolName !== 'AskUserQuestion') {
-    console.log(JSON.stringify({ decision: 'allow', reason: 'not AskUserQuestion' }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return 0;
   }
 

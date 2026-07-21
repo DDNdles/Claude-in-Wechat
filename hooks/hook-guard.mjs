@@ -6,8 +6,8 @@
  * Reads Claude Code PreToolUse JSON from stdin:
  *   { "tool_name": "Bash", "tool_input": { "command": "rm -rf /", ... } }
  *
- * Outputs Claude Code hook decision JSON to stdout:
- *   { "decision": "allow" | "block", "reason": "..." }
+ * Outputs Claude Code PreToolUse hook JSON to stdout:
+ *   { "hookSpecificOutput": { "permissionDecision": "allow" | "deny" } }
  *
  * Configuration (env vars):
  *   WXG_TIMEOUT=120          — timeout in seconds
@@ -134,19 +134,19 @@ async function main() {
 
   // ── Only intercept Bash, Write, Edit ──
   if (!['Bash', 'Write', 'Edit'].includes(toolName)) {
-    console.log(JSON.stringify({ decision: 'allow', reason: 'safe tool type' }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return;
   }
 
   // ── Check allow list ──
   if (isInAllowList(toolInput)) {
-    console.log(JSON.stringify({ decision: 'allow', reason: 'allow list match' }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return;
   }
 
   // ── Check danger ──
   if (!isDangerous(toolInput)) {
-    console.log(JSON.stringify({ decision: 'allow', reason: 'safe command' }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return;
   }
 
@@ -156,7 +156,7 @@ async function main() {
     const last = getLastApproval();
     const ageStr = last ? `${Math.round(last.ageMs / 1000)}s 前` : '';
     log(`Recent approval found (${ageStr}) — auto-allowing "${descForCache}"`);
-    console.log(JSON.stringify({ decision: 'allow', reason: `最近已批准 (${ageStr})，免再次确认` }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return;
   }
 
@@ -166,7 +166,7 @@ async function main() {
     account = loadWeixinAccount();
   } catch (err) {
     log(`WeChat unavailable: ${err.message} — allowing operation`);
-    console.log(JSON.stringify({ decision: 'allow', reason: `微信不可用: ${err.message.slice(0, 80)}` }));
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
     return;
   }
 
@@ -200,7 +200,7 @@ async function main() {
 
     const stdout = (result.stdout || '').trim();
     if (!stdout) {
-      console.log(JSON.stringify({ decision: 'block', reason: '微信脚本无输出' }));
+      console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'deny' } }));
       return;
     }
 
@@ -210,7 +210,7 @@ async function main() {
     try {
       parsed = JSON.parse(lastLine);
     } catch {
-      console.log(JSON.stringify({ decision: 'block', reason: `无效输出: ${lastLine.slice(0, 80)}` }));
+      console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'deny' } }));
       return;
     }
 
@@ -218,21 +218,21 @@ async function main() {
       if (parsed.index === 0) {
         // User chose to allow — cache this approval
         recordApproval('danger-guard', descPreview, cwd);
-        console.log(JSON.stringify({ decision: 'allow', reason: `用户允许: ${parsed.rawReply}` }));
+        console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'allow' } }));
       } else {
-        console.log(JSON.stringify({ decision: 'block', reason: `用户阻止: ${parsed.rawReply}` }));
+        console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'deny' } }));
       }
     } else {
       // Timeout or error → use default action
-      const action = DEFAULT_ACTION === 'allow' ? 'allow' : 'block';
-      console.log(JSON.stringify({ decision: action, reason: `微信${parsed.reason === 'timeout' ? '超时' : '错误'}: ${parsed.reason}` }));
+      const allow = DEFAULT_ACTION === 'allow';
+      console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: allow ? 'allow' : 'deny' } }));
     }
   } catch (err) {
-    // spawnSync timeout or script error → block to be safe
-    console.log(JSON.stringify({ decision: 'block', reason: `决策异常: ${err.message.slice(0, 80)}` }));
+    // spawnSync timeout or script error → deny to be safe
+    console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'deny' } }));
   }
 }
 
 main().catch((err) => {
-  console.log(JSON.stringify({ decision: 'block', reason: `hook 错误: ${err.message.slice(0, 80)}` }));
+  console.log(JSON.stringify({ hookSpecificOutput: { permissionDecision: 'deny' } }));
 });
