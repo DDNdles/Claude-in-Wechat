@@ -291,7 +291,9 @@ async function launchClaudeForProject(projectFolder, projectName, task, toUserId
   // Build the PowerShell command: cd to project, run claude with task as prompt
   // claude "prompt" = interactive mode with initial prompt (NOT -p one-shot)
   const escapedTask = task.replace(/"/g, '`"');
-  const psCmd = `start "Claude - ${projectName}" powershell -NoExit -Command "cd '${projectFolder}'; Write-Host 'Claude Code - ${projectName}' -ForegroundColor Cyan; claude '${escapedTask}'"`;
+  // --dangerously-skip-permissions skips the "trust this folder" dialog
+  // (AskUserQuestion still works because hooks intercept BEFORE permission check)
+  const psCmd = `start "Claude - ${projectName}" powershell -NoExit -Command "cd '${projectFolder}'; Write-Host 'Claude Code - ${projectName}' -ForegroundColor Cyan; claude --dangerously-skip-permissions '${escapedTask}'"`;
 
   try {
     exec(psCmd, { windowsHide: false });
