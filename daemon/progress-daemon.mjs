@@ -301,7 +301,8 @@ async function launchClaudeForProject(projectFolder, projectName, task, toUserId
     (process.platform === 'win32' ? 'claude' : 'claude');
 
   return new Promise((resolve) => {
-    const child = spawn(claudeBin, ['-p', task, '--cwd', projectFolder, '--permission-mode', 'bypassPermissions'], {
+    const child = spawn(claudeBin, ['-p', task, '--dangerously-skip-permissions'], {
+      cwd: projectFolder,
       env: { ...process.env },
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 600_000, // 10 min max
@@ -321,11 +322,13 @@ async function launchClaudeForProject(projectFolder, projectName, task, toUserId
 
     child.on('close', async (code) => {
       log(`Claude exited with code ${code} for project "${projectName}"`);
+      if (stderr) log(`Claude stderr: ${stderr.slice(0, 500)}`);
       const success = code === 0;
 
+      const errPreview = stderr.split('\n').filter(l => /error|Error|失败/i.test(l)).slice(0, 3).join('\n') || stderr.slice(-200);
       const summary = success
         ? `✅ 项目「${projectName}」任务完成\n📁 ${projectFolder}`
-        : `❌ 项目「${projectName}」出错 (exit ${code})\n📁 ${projectFolder}\n错误: ${stderr.slice(-300) || '(无输出)'}`;
+        : `❌ 项目「${projectName}」出错 (exit ${code})\n📁 ${projectFolder}\n${errPreview || '(无输出)'}`;
 
       try {
         await sendMessage(account, toUserId, summary, contextToken);
