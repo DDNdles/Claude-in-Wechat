@@ -144,8 +144,8 @@ Claude 使用 AskUserQuestion 工具时，hook 拦截并发送到微信：
 
 ## 相关项目
 
-- [weixin-decision](../weixin-decision/) — 显式决策 skill，用于临时微信查询
-- [claude-to-im](../claude-to-im/) — 完整 IM 桥接 daemon，手机端访问 Claude
+- [weixin-decision](./weixin-decision/) — 显式决策 skill，用于临时微信查询（已包含在本仓库中）
+- [claude-to-im](https://github.com/op7418/Claude-to-IM-skill) — 完整 IM 桥接 daemon，手机端访问 Claude（本地版本与上游一致，无自改）
 
 ## 授权
 

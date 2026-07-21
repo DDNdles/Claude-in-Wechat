@@ -168,8 +168,8 @@ The progress daemon continuously polls WeChat. Reply "查询进度" to get:
 
 ## Related
 
-- [weixin-decision](../weixin-decision/) — Explicit decision skill for ad-hoc WeChat queries
-- [claude-to-im](../claude-to-im/) — Full IM bridge daemon for mobile Claude access
+- [weixin-decision](./weixin-decision/) — Explicit decision skill for ad-hoc WeChat queries (bundled in this repo)
+- [claude-to-im](https://github.com/op7418/Claude-to-IM-skill) — Full IM bridge daemon for mobile Claude access（本地版本与上游一致，无自改）
 
 ## License
 
