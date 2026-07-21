@@ -25,6 +25,7 @@ import {
   matchReply,
   formatDecisionMsg,
   readRecentInboundMessages,
+  readBridgeMessages,
 } from '../lib/weixin-client.mjs';
 
 const log = (...args) => process.stderr.write('[ask-weixin] ' + args.join(' ') + '\n');
@@ -89,63 +90,52 @@ async function main() {
   const deadline = sendTime + timeoutSec * 1000;
   let lastAuditCheck = 0;
 
+  // Helper: check a text string against options, exit if matched
+  const checkReply = (text, source) => {
+    text = (text || '').trim();
+    if (!text) return false;
+    const matched = matchReply(text, options);
+    if (matched === null) return false;
+    const label = options[matched];
+    log(`Reply (${source}): "${text}" => #${matched + 1} "${label}"`);
+    sendMessage(account, toUserId, `收到 (${matched + 1})`, contextToken).catch(() => {});
+    console.log(JSON.stringify({ ok: true, index: matched, label, rawReply: text }));
+    process.exit(0);
+  };
+
   while (Date.now() < deadline) {
     const remaining = Math.min(30000, Math.max(5000, deadline - Date.now() + 1000));
 
-    // Strategy 1: Poll WeChat API (with empty cursor — bridge may consume messages)
+    // Strategy 1: Poll WeChat API
     try {
-      const resp = await pollUpdates(account, '', Math.min(remaining, 8000));
-
+      const resp = await pollUpdates(account, '', Math.min(remaining, 5000));
       for (const msg of resp.msgs || []) {
         if (msg.from_user_id !== toUserId) continue;
-
         let text = '';
         for (const item of msg.item_list || []) {
-          if (item.type === 1 && item.text_item?.text) {
-            text += item.text_item.text;
-          }
+          if (item.type === 1 && item.text_item?.text) text += item.text_item.text;
         }
-        text = text.trim();
-        if (!text) continue;
-
-        const matched = matchReply(text, options);
-        if (matched !== null) {
-          const label = options[matched];
-          log(`Reply (API): "${text}" => #${matched + 1} "${label}"`);
-          // Send acknowledgment to WeChat
-          sendMessage(account, toUserId, `收到 (${matched + 1})`, contextToken).catch(() => {});
-          console.log(JSON.stringify({ ok: true, index: matched, label, rawReply: text }));
-          process.exit(0);
-        }
+        if (checkReply(text, 'API')) return;
       }
-
       if (resp.get_updates_buf) cursor = resp.get_updates_buf;
     } catch (err) {
       log(`Poll error: ${err.message}`);
     }
 
-    // Strategy 2: Check bridge audit log for recent inbound messages
-    // (works when bridge daemon is consuming getupdates cursor)
-    if (Date.now() - lastAuditCheck > 3000) {
+    // Strategy 2: Check bridge audit log (every 1s)
+    if (Date.now() - lastAuditCheck > 1000) {
       lastAuditCheck = Date.now();
-      const inbound = readRecentInboundMessages(toUserId, sendTime);
-      for (const msg of inbound) {
-        const text = msg.text ? msg.text.trim() : '';
-        if (!text) continue;
-
-        const matched = matchReply(text, options);
-        if (matched !== null) {
-          const label = options[matched];
-          log(`Reply (bridge): "${text}" => #${matched + 1} "${label}"`);
-          // Send acknowledgment to WeChat
-          sendMessage(account, toUserId, `收到 (${matched + 1})`, contextToken).catch(() => {});
-          console.log(JSON.stringify({ ok: true, index: matched, label, rawReply: text }));
-          process.exit(0);
-        }
+      // 2a: audit summary
+      for (const msg of readRecentInboundMessages(toUserId, sendTime)) {
+        if (checkReply(msg.text, 'audit')) return;
+      }
+      // 2b: bridge message store (full text)
+      for (const msg of readBridgeMessages(account.accountId, toUserId, sendTime)) {
+        if (checkReply(msg.text, 'store')) return;
       }
     }
 
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise(r => setTimeout(r, 500));
   }
 
   log(`Timeout after ${timeoutSec}s`);
