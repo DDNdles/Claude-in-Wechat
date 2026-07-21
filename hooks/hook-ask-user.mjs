@@ -28,6 +28,7 @@ import {
   pollUpdates,
 } from '../lib/weixin-client.mjs';
 import { autoRegister, getContextSummary } from '../lib/project-context.mjs';
+import { recordApproval } from '../lib/approval-cache.mjs';
 
 // ── Config ──
 
@@ -219,8 +220,13 @@ async function main() {
   // ── Build response ──
 
   const systemMessage = buildAnswerMessage(questions, answers);
-
   const hasAnswers = answers.some(a => a !== null);
+
+  // Record approval so hook-guard doesn't re-ask for subsequent tool calls
+  if (hasAnswers) {
+    const firstQ = questions[0];
+    recordApproval('ask-user', firstQ?.question || 'user decision', cwd);
+  }
 
   console.log(JSON.stringify({
     hookSpecificOutput: {

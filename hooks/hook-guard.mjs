@@ -27,6 +27,7 @@ import {
   writeProgressState,
 } from '../lib/weixin-client.mjs';
 import { autoRegister, getContextSummary } from '../lib/project-context.mjs';
+import { hasRecentApproval, recordApproval, getLastApproval } from '../lib/approval-cache.mjs';
 
 const NODE_PATH = process.execPath;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,6 +150,16 @@ async function main() {
     return;
   }
 
+  // ── Check approval cache — skip WeChat if recently approved ──
+  const descForCache = toolInput.description || (toolInput.command || toolInput.file_path || '').slice(0, 50);
+  if (hasRecentApproval(descForCache, cwd)) {
+    const last = getLastApproval();
+    const ageStr = last ? `${Math.round(last.ageMs / 1000)}s 前` : '';
+    log(`Recent approval found (${ageStr}) — auto-allowing "${descForCache}"`);
+    console.log(JSON.stringify({ decision: 'allow', reason: `最近已批准 (${ageStr})，免再次确认` }));
+    return;
+  }
+
   // ── Load WeChat account ──
   let account;
   try {
@@ -205,7 +216,8 @@ async function main() {
 
     if (parsed.ok) {
       if (parsed.index === 0) {
-        // User chose to allow
+        // User chose to allow — cache this approval
+        recordApproval('danger-guard', descPreview, cwd);
         console.log(JSON.stringify({ decision: 'allow', reason: `用户允许: ${parsed.rawReply}` }));
       } else {
         console.log(JSON.stringify({ decision: 'block', reason: `用户阻止: ${parsed.rawReply}` }));
