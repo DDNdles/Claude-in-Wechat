@@ -510,7 +510,7 @@ async function runDaemon() {
 
         // Rate limit check (only for progress queries, not for switch commands)
         const now = Date.now();
-        const isSwitchCmd = cmd.cmd === 'switch-project' || cmd.cmd === 'switch-chat' || cmd.cmd === 'list-projects' || cmd.cmd === 'register-project' || cmd.cmd === 'help';
+        const isSwitchCmd = cmd.cmd === 'switch-project' || cmd.cmd === 'switch-chat' || cmd.cmd === 'list-projects' || cmd.cmd === 'register-project' || cmd.cmd === 'help' || cmd.cmd === 'new-project';
         if (!isSwitchCmd && now - lastReplyTime < RATE_LIMIT_MS) {
           log('Rate limited — too soon since last reply');
           continue;
