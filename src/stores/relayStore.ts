@@ -1,65 +1,74 @@
 import { create } from 'zustand';
-import type { RelayStatus, IpcResponse } from '../../shared/types';
 
-interface RelayStore {
-  status: RelayStatus;
-  start: () => Promise<void>;
-  stop: () => Promise<void>;
-  startPolling: () => void;
+interface BridgeState {
+  running: boolean;
+  hasAccount: boolean;
+  configured: boolean;
+  pid: number | null;
+  loading: boolean;
+  error: string | null;
+
+  refreshStatus: () => Promise<void>;
+  loginWeChat: () => Promise<{ success: boolean; message: string }>;
+  startBridge: () => Promise<{ success: boolean; message: string }>;
+  stopBridge: () => Promise<{ success: boolean; message: string }>;
 }
 
-const DEFAULT_STATUS: RelayStatus = {
-  connected: false,
-  polling: false,
-  messagesToday: 0,
-  errors: 0,
-};
+export const useRelayStore = create<BridgeState>((set) => ({
+  running: false,
+  hasAccount: false,
+  configured: false,
+  pid: null,
+  loading: false,
+  error: null,
 
-export const useRelayStore = create<RelayStore>((set, get) => ({
-  status: DEFAULT_STATUS,
-
-  start: async () => {
-    if (window.electronAPI?.relayStart) {
-      await window.electronAPI.relayStart();
-    }
-    set(s => ({ status: { ...s.status, polling: true } }));
-  },
-
-  stop: async () => {
-    if (window.electronAPI?.relayStop) {
-      await window.electronAPI.relayStop();
-    }
-    set(s => ({ status: { ...s.status, polling: false } }));
-  },
-
-  startPolling: () => {
-    // Poll relay status every 5 seconds
-    const poll = async () => {
-      try {
-        if (window.electronAPI?.relayStatus) {
-          const resp = await window.electronAPI.relayStatus();
-          if (resp.success && resp.data) {
-            set({ status: resp.data as RelayStatus });
-            return;
-          }
-        }
-        // Mock: simulate connected state
-        set({
-          status: {
-            connected: true,
-            accountId: 'wxid_mock',
-            polling: true,
-            lastPollAt: new Date().toISOString(),
-            messagesToday: 12,
-            errors: 0,
-          },
-        });
-      } catch {
-        // Keep current state
+  refreshStatus: async () => {
+    set({ loading: true });
+    try {
+      const api = window.electronAPI;
+      if (!api) { set({ loading: false, error: 'Electron API 不可用' }); return; }
+      const resp = await api.wechatStatus();
+      if (resp.success && resp.data) {
+        set({ ...resp.data, loading: false, error: null });
+      } else {
+        set({ loading: false, error: resp.error || '获取状态失败' });
       }
-    };
+    } catch (err) {
+      set({ loading: false, error: String(err) });
+    }
+  },
 
-    poll();
-    setInterval(poll, 5000);
+  loginWeChat: async () => {
+    const api = window.electronAPI;
+    if (!api) return { success: false, message: 'Electron API 不可用' };
+    const resp = await api.wechatLogin();
+    if (resp.success && resp.data) {
+      // Refresh status after login
+      set(s => { s.refreshStatus(); return {}; });
+      return resp.data;
+    }
+    return { success: false, message: resp.error || '登录失败' };
+  },
+
+  startBridge: async () => {
+    const api = window.electronAPI;
+    if (!api) return { success: false, message: 'Electron API 不可用' };
+    const resp = await api.wechatStartBridge();
+    if (resp.success && resp.data) {
+      set(s => { s.refreshStatus(); return {}; });
+      return resp.data;
+    }
+    return { success: false, message: resp.error || '启动失败' };
+  },
+
+  stopBridge: async () => {
+    const api = window.electronAPI;
+    if (!api) return { success: false, message: 'Electron API 不可用' };
+    const resp = await api.wechatStopBridge();
+    if (resp.success && resp.data) {
+      set(s => { s.refreshStatus(); return {}; });
+      return resp.data;
+    }
+    return { success: false, message: resp.error || '停止失败' };
   },
 }));

@@ -25,17 +25,18 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
     );
   }
 
-  const handleOpenTerminal = () => {
-    if (window.electronAPI?.ccOpenTerminal) {
-      window.electronAPI.ccOpenTerminal(projectId);
-    } else {
-      alert(`将在终端打开: ${project.path}`);
+  const handleOpenTerminal = async () => {
+    const api = window.electronAPI;
+    if (api) {
+      await api.claudeOpenProjectDir(projectId, project.path, project.name);
     }
   };
 
   const handleStartClaude = async () => {
-    if (window.electronAPI?.ccStart) {
-      await window.electronAPI.ccStart(projectId);
+    const api = window.electronAPI;
+    if (api) {
+      await api.projectOpen(projectId);
+      await api.claudeOpenTerminal(projectId, project.path, project.name);
     }
     updateProject(projectId, { status: 'running', lastActiveAt: new Date().toISOString() });
   };

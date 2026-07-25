@@ -1,9 +1,10 @@
 import { create } from 'zustand';
-import type { AppSettings, IpcResponse } from '../../shared/types';
+import type { AppSettings } from '../../shared/types';
 
 interface SettingsStore {
   settings: AppSettings;
   loading: boolean;
+  error: string | null;
   loadSettings: () => Promise<void>;
   updateSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => Promise<void>;
 }
@@ -19,38 +20,34 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
 };
 
-export const useSettingsStore = create<SettingsStore>((set, get) => ({
+export const useSettingsStore = create<SettingsStore>((set) => ({
   settings: DEFAULT_SETTINGS,
   loading: false,
+  error: null,
 
   loadSettings: async () => {
     set({ loading: true });
     try {
-      if (window.electronAPI?.settingsGetAll) {
-        const resp = await window.electronAPI.settingsGetAll();
-        if (resp.success && resp.data) {
-          set({ settings: { ...DEFAULT_SETTINGS, ...resp.data } as AppSettings, loading: false });
-          return;
-        }
+      const api = window.electronAPI;
+      if (!api) {
+        set({ loading: false, error: 'Electron API 不可用' });
+        return;
       }
-      // Mock settings
-      set({
-        settings: {
-          ...DEFAULT_SETTINGS,
-          wechatEnabled: true,
-          projectDir: 'C:\\Users\\30959\\projects\\Wechat',
-          autoStart: true,
-        },
-        loading: false,
-      });
-    } catch {
-      set({ loading: false });
+      const resp = await api.settingsGetAll();
+      if (resp.success && resp.data) {
+        set({ settings: { ...DEFAULT_SETTINGS, ...resp.data }, loading: false, error: null });
+      } else {
+        set({ loading: false, error: resp.error || '加载设置失败' });
+      }
+    } catch (err) {
+      set({ loading: false, error: String(err) });
     }
   },
 
   updateSetting: async (key, value) => {
-    if (window.electronAPI?.settingsSet) {
-      await window.electronAPI.settingsSet(key as string, value);
+    const api = window.electronAPI;
+    if (api) {
+      await api.settingsSet(key as string, value);
     }
     set(s => ({
       settings: { ...s.settings, [key]: value },

@@ -1,103 +1,98 @@
 /**
- * Claude in WeChat — Preload script.
- *
- * Exposes a typed, secure IPC bridge to the renderer via contextBridge.
- * Every method corresponds to an IPC channel defined in shared/types.ts.
+ * Claude-in-WeChat v0.3 — Preload script
+ * Clean, typed IPC bridge. No mock data.
  */
 
-import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
-import type {
-  IpcResponse,
-  Project,
-  RelayStatus,
-  AppSettings,
-  RelayEvent,
-  OrchestratorEvent,
-} from '../shared/types';
-
-// ── Type for relay event callback ────────────────────────────────────
-type RelayEventCallback = (event: RelayEvent) => void;
-type OrchestratorEventCallback = (event: OrchestratorEvent) => void;
-
-// ── Exposed API shape ────────────────────────────────────────────────
+import { contextBridge, ipcRenderer } from 'electron';
+import type { IpcResponse, Project, AppSettings } from '../shared/types';
 
 const electronAPI = {
-  // ═══════════════════════════════════════════════════════════════════
-  // Project Operations
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
+  // Project CRUD
+  // ═══════════════════════════════════════════════════════════════
 
   projectList: (): Promise<IpcResponse<Project[]>> =>
     ipcRenderer.invoke('project:list'),
 
-  projectCreate: (name: string, launchMode?: 'wechat' | 'desktop'): Promise<IpcResponse<Project>> =>
-    ipcRenderer.invoke('project:create', { name, launchMode }),
+  projectCreate: (name: string): Promise<IpcResponse<Project>> =>
+    ipcRenderer.invoke('project:create', name),
 
   projectDelete: (id: string): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('project:delete', { id }),
+    ipcRenderer.invoke('project:delete', id),
 
-  projectRename: (id: string, name: string): Promise<IpcResponse<Project>> =>
-    ipcRenderer.invoke('project:rename', { id, name }),
+  projectRename: (id: string, newName: string): Promise<IpcResponse<Project>> =>
+    ipcRenderer.invoke('project:rename', id, newName),
 
-  projectOpen: (id: string): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('project:open', { id }),
+  projectOpen: (id: string): Promise<IpcResponse<Project>> =>
+    ipcRenderer.invoke('project:open', id),
 
   projectGet: (id: string): Promise<IpcResponse<Project>> =>
-    ipcRenderer.invoke('project:get', { id }),
+    ipcRenderer.invoke('project:get', id),
 
-  projectUpdate: (project: Partial<Project> & { id: string }): Promise<IpcResponse<Project>> =>
-    ipcRenderer.invoke('project:update', project),
+  projectUpdate: (id: string, status: string, progress?: number, tasks?: unknown): Promise<IpcResponse<Project>> =>
+    ipcRenderer.invoke('project:update', id, status, progress, tasks),
 
-  // ═══════════════════════════════════════════════════════════════════
-  // Relay (WeChat connection)
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
+  // Claude Launcher
+  // ═══════════════════════════════════════════════════════════════
 
-  relayStart: (): Promise<IpcResponse<RelayStatus>> =>
-    ipcRenderer.invoke('relay:start'),
+  claudeOpenTerminal: (projectId: string, cwd: string, projectName: string): Promise<IpcResponse<{ success: boolean; pid?: number; message: string }>> =>
+    ipcRenderer.invoke('claude:open-terminal', projectId, cwd, projectName),
 
-  relayStop: (): Promise<IpcResponse<RelayStatus>> =>
-    ipcRenderer.invoke('relay:stop'),
+  claudeOpenProjectDir: (projectId: string, cwd: string, projectName: string): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('claude:open-project-terminal', projectId, cwd, projectName),
 
-  relayStatus: (): Promise<IpcResponse<RelayStatus>> =>
-    ipcRenderer.invoke('relay:status'),
+  // ═══════════════════════════════════════════════════════════════
+  // WeChat Bridge
+  // ═══════════════════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════════════════════
-  // Orchestrator (Claude Code)
-  // ═══════════════════════════════════════════════════════════════════
+  wechatLogin: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('wechat:login'),
 
-  ccStart: (projectId: string): Promise<IpcResponse<{ pid: number }>> =>
-    ipcRenderer.invoke('cc:start', { projectId }),
+  wechatAccount: (): Promise<IpcResponse<{ accountId: string; userId: string; name?: string } | null>> =>
+    ipcRenderer.invoke('wechat:account'),
 
-  ccStop: (projectId: string): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('cc:stop', { projectId }),
+  wechatStatus: (): Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; pid: number | null }>> =>
+    ipcRenderer.invoke('wechat:status'),
 
-  ccStatus: (projectId: string): Promise<IpcResponse<{ status: string; pid?: number }>> =>
-    ipcRenderer.invoke('cc:status', { projectId }),
+  wechatStartBridge: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('wechat:start-bridge'),
 
-  ccOpenTerminal: (projectId: string): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('cc:open-terminal', { projectId }),
+  wechatStopBridge: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('wechat:stop-bridge'),
 
-  // ═══════════════════════════════════════════════════════════════════
+  wechatLogs: (lines?: number): Promise<IpcResponse<{ logs: string }>> =>
+    ipcRenderer.invoke('wechat:logs', lines),
+
+  // ═══════════════════════════════════════════════════════════════
+  // Hooks
+  // ═══════════════════════════════════════════════════════════════
+
+  hooksInstall: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('hooks:install'),
+
+  hooksRemove: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('hooks:remove'),
+
+  hooksStatus: (): Promise<IpcResponse<{ installed: boolean; hooks: unknown }>> =>
+    ipcRenderer.invoke('hooks:status'),
+
+  // ═══════════════════════════════════════════════════════════════
   // Settings
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
 
-  settingsGet: <K extends keyof AppSettings>(key: K): Promise<IpcResponse<AppSettings[K]>> =>
-    ipcRenderer.invoke('settings:get', { key }),
+  settingsGet: (key: string): Promise<IpcResponse<unknown>> =>
+    ipcRenderer.invoke('settings:get', key),
 
-  settingsSet: <K extends keyof AppSettings>(key: K, value: AppSettings[K]): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('settings:set', { key, value }),
+  settingsSet: (key: string, value: unknown): Promise<IpcResponse<void>> =>
+    ipcRenderer.invoke('settings:set', key, value),
 
   settingsGetAll: (): Promise<IpcResponse<AppSettings>> =>
     ipcRenderer.invoke('settings:getAll'),
 
-  setupWechat: (): Promise<IpcResponse<{ qrCodeUrl?: string }>> =>
-    ipcRenderer.invoke('setup:wechat'),
-
-  setupHooks: (): Promise<IpcResponse<void>> =>
-    ipcRenderer.invoke('setup:hooks'),
-
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
   // App
-  // ═══════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════
 
   appGetVersion: (): Promise<IpcResponse<string>> =>
     ipcRenderer.invoke('app:getVersion'),
@@ -109,46 +104,8 @@ const electronAPI = {
   appQuit: (): void => {
     ipcRenderer.invoke('app:quit');
   },
-
-  // ═══════════════════════════════════════════════════════════════════
-  // Push Events (Main → Renderer)
-  // ═══════════════════════════════════════════════════════════════════
-
-  onRelayEvent: (callback: RelayEventCallback): (() => void) => {
-    const handler = (_event: IpcRendererEvent, data: RelayEvent): void => {
-      callback(data);
-    };
-    ipcRenderer.on('relay:message', handler);
-    // Return cleanup function
-    return () => {
-      ipcRenderer.removeListener('relay:message', handler);
-    };
-  },
-
-  onOrchestratorEvent: (callback: OrchestratorEventCallback): (() => void) => {
-    const handler = (_event: IpcRendererEvent, data: OrchestratorEvent): void => {
-      callback(data);
-    };
-    ipcRenderer.on('cc:output', handler);
-    // Return cleanup function
-    return () => {
-      ipcRenderer.removeListener('cc:output', handler);
-    };
-  },
-
-  /**
-   * Generic remove-all-listeners helper.
-   * Call when unmounting a component to prevent memory leaks.
-   */
-  removeListener: (channel: string): void => {
-    ipcRenderer.removeAllListeners(channel);
-  },
 };
 
-// ── Expose to renderer ───────────────────────────────────────────────
-
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
-
-// ── Renderer-side type declaration (for TypeScript consumers) ────────
 
 export type ElectronAPI = typeof electronAPI;

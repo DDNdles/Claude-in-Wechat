@@ -16,44 +16,71 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [wechatStatus, setWechatStatus] = useState<'pending' | 'checking' | 'connected' | 'needLogin' | 'failed'>('pending');
   const [wechatInfo, setWechatInfo] = useState('');
   const [claudeStatus, setClaudeStatus] = useState<'pending' | 'checking' | 'ok' | 'failed'>('pending');
+  const [claudeInfo, setClaudeInfo] = useState('');
 
+  // Real WeChat check — use the bridge service
   const checkWeChat = async () => {
     setWechatStatus('checking');
+    const api = window.electronAPI;
+    if (!api) { setWechatStatus('failed'); setWechatInfo('需要 Electron 环境'); return; }
+
     try {
-      if (window.electronAPI?.setupWechat) {
-        const resp = await window.electronAPI.setupWechat();
-        if (resp.success && resp.data) {
-          const data = resp.data as any;
-          if (data.connected) {
-            setWechatStatus('connected');
-            setWechatInfo(`账户: ${data.accountId || '已绑定'}`);
-          } else if (data.needLogin) {
-            setWechatStatus('needLogin');
-            setWechatInfo('请在浏览器中扫描二维码完成微信绑定');
-          } else {
-            setWechatStatus('failed');
-          }
-        } else {
-          setWechatStatus('failed');
-        }
-      } else {
-        // Non-Electron: check localStorage or mock
-        await new Promise(r => setTimeout(r, 800));
+      // First check if already bound
+      const accountResp = await api.wechatAccount();
+      if (accountResp.success && accountResp.data) {
         setWechatStatus('connected');
-        setWechatInfo('账户: 已绑定 (开发模式)');
+        setWechatInfo(`账户: ${(accountResp.data as any).accountId || '已绑定'}`);
+        return;
       }
+
+      // Not bound — trigger QR login
+      setWechatStatus('needLogin');
+      setWechatInfo('点击下方按钮打开二维码');
     } catch {
       setWechatStatus('failed');
     }
   };
 
-  const checkClaude = async () => {
+  const handleWeChatLogin = async () => {
+    setWechatStatus('checking');
+    setWechatInfo('正在生成二维码...');
+    const api = window.electronAPI;
+    if (!api) return;
+
+    const resp = await api.wechatLogin();
+    if (resp.success && resp.data?.success) {
+      // Poll for account
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        const checkResp = await api.wechatAccount();
+        if (checkResp.success && checkResp.data) {
+          setWechatStatus('connected');
+          setWechatInfo(`✅ 已绑定: ${(checkResp.data as any).accountId || ''}`);
+          return;
+        }
+      }
+      setWechatStatus('needLogin');
+      setWechatInfo('扫码超时，请重试');
+    } else {
+      setWechatStatus('failed');
+      setWechatInfo(resp.data?.message || resp.error || '登录失败');
+    }
+  };
+
+  // Real Claude Code hooks setup
+  const configureHooks = async () => {
     setClaudeStatus('checking');
-    try {
-      await new Promise(r => setTimeout(r, 1000));
+    setClaudeInfo('正在安装 hooks...');
+    const api = window.electronAPI;
+    if (!api) { setClaudeStatus('failed'); setClaudeInfo('需要 Electron 环境'); return; }
+
+    const resp = await api.hooksInstall();
+    if (resp.success && resp.data?.success) {
       setClaudeStatus('ok');
-    } catch {
+      setClaudeInfo((resp.data as any).message || '✅ Hooks 配置完成');
+    } else {
       setClaudeStatus('failed');
+      setClaudeInfo(resp.data?.message || resp.error || '配置失败');
     }
   };
 
@@ -70,9 +97,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             }`}>
               {i < step ? '✓' : s.icon}
             </div>
-            <span className={`text-xs ${i === step ? 'text-white' : 'text-gray-500'}`}>
-              {s.title}
-            </span>
+            <span className={`text-xs ${i === step ? 'text-white' : 'text-gray-500'}`}>{s.title}</span>
             {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-700" />}
           </div>
         ))}
@@ -102,44 +127,32 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="py-6">
             <h2 className="text-xl font-bold mb-4">🔗 绑定微信</h2>
             <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              使用微信 iLink Bot 收发消息、接收进度通知和决策请求。
+              使用 claude-to-im 微信扫码登录。点击按钮后浏览器会打开二维码页面。
             </p>
             <div className="space-y-3">
-              <button
-                className="btn btn-primary w-full"
-                onClick={checkWeChat}
-                disabled={wechatStatus === 'checking'}
-              >
+              <button className="btn btn-primary w-full" onClick={checkWeChat}
+                disabled={wechatStatus === 'checking'}>
                 {wechatStatus === 'checking' ? '⏳ 检测中...' :
-                 wechatStatus === 'connected' ? '🔄 重新检测' :
-                 wechatStatus === 'needLogin' ? '🔄 重试绑定' :
-                 '🔍 检测微信连接'}
+                 wechatStatus === 'connected' ? '🔄 重新检测' : '🔍 检测微信连接'}
               </button>
+              {wechatStatus === 'needLogin' && (
+                <button className="btn btn-primary w-full" onClick={handleWeChatLogin}>
+                  📱 扫码绑定微信
+                </button>
+              )}
               {wechatStatus === 'connected' && (
                 <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
                   <p className="text-green-400 text-sm font-medium">✅ 微信已连接</p>
                   <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{wechatInfo}</p>
-                  <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                    现在可以在微信上使用 /list、/new、/check 等命令了
-                  </p>
                 </div>
               )}
-              {wechatStatus === 'needLogin' && (
-                <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
-                  <p className="text-yellow-400 text-sm font-medium">⚠️ 需要微信扫码</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{wechatInfo}</p>
-                  <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
-                    系统将自动打开浏览器显示二维码，用微信扫描即可完成绑定
-                  </p>
-                </div>
+              {wechatInfo && wechatStatus !== 'connected' && (
+                <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{wechatInfo}</p>
               )}
               {wechatStatus === 'failed' && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
-                  <p className="text-red-400 text-sm font-medium">❌ 连接失败</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-                    请确保已安装 claude-to-im skill: /claude-to-im setup
-                  </p>
-                </div>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                  请确保已安装 claude-to-im skill
+                </p>
               )}
             </div>
           </div>
@@ -147,23 +160,22 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
 
         {step === 2 && (
           <div className="py-6">
-            <h2 className="text-xl font-bold mb-4">🖥️ 配置 Claude Code</h2>
+            <h2 className="text-xl font-bold mb-4">🖥️ 配置 Claude Code Hooks</h2>
             <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
               安装必要的 hooks 来拦截工具调用和转发决策到微信。
             </p>
             <div className="space-y-3">
-              <button
-                className="btn btn-primary w-full"
-                onClick={checkClaude}
-                disabled={claudeStatus === 'checking'}
-              >
-                {claudeStatus === 'checking' ? '配置中...' : '安装 Hooks 配置'}
+              <button className="btn btn-primary w-full" onClick={configureHooks}
+                disabled={claudeStatus === 'checking'}>
+                {claudeStatus === 'checking' ? '⏳ 配置中...' : '🔧 安装 Hooks'}
               </button>
               {claudeStatus === 'ok' && (
-                <p className="text-green-400 text-sm">✅ Hooks 配置完成！</p>
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <p className="text-green-400 text-sm">✅ {claudeInfo}</p>
+                </div>
               )}
               {claudeStatus === 'failed' && (
-                <p className="text-red-400 text-sm">❌ 配置失败，请检查 Claude Code 是否正确安装</p>
+                <p className="text-red-400 text-sm">❌ {claudeInfo}</p>
               )}
               <div className="text-xs space-y-1" style={{ color: 'var(--color-text-muted)' }}>
                 <p>将自动配置以下 Hooks:</p>
@@ -186,20 +198,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               <br />• 发送任务描述开始工作
               <br />• 收到决策问题时回复数字
             </p>
-            <div className="text-xs space-y-1 mb-6" style={{ color: 'var(--color-text-muted)' }}>
-              <p>微信命令: /list /new /open /delete /rename /check /token /help</p>
-            </div>
           </div>
         )}
       </div>
 
       {/* Navigation */}
       <div className="flex justify-between mt-6">
-        <button
-          className="btn btn-ghost"
-          onClick={() => setStep(Math.max(0, step - 1))}
-          disabled={step === 0}
-        >
+        <button className="btn btn-ghost" onClick={() => setStep(Math.max(0, step - 1))} disabled={step === 0}>
           ← 上一步
         </button>
         {step < STEPS.length - 1 ? (

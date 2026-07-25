@@ -37,6 +37,9 @@ export function projectProgressFile(projectId: string): string {
   return path.join(RUNTIME_DIR, `progress-${projectId}.json`);
 }
 
+/** Active project state file */
+export const ACTIVE_PROJECT_FILE = path.join(RUNTIME_DIR, 'active-project.json');
+
 /** Relay cursor for WeChat polling */
 export const RELAY_CURSOR_FILE = path.join(RUNTIME_DIR, 'relay-cursor.json');
 

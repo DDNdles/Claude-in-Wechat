@@ -36,36 +36,43 @@ function timeAgo(isoString: string): string {
 export default function ProjectCard({ project, onClick }: ProjectCardProps) {
   const [showDelete, setShowDelete] = useState(false);
   const [toast, setToast] = useState('');
-
   const statusConfig = STATUS_CONFIG[project.status] || STATUS_CONFIG.idle;
   const { deleteProject, openProject } = useProjectStore();
 
-  const handleOpenProject = async (e: React.MouseEvent) => {
+  // Launch Claude in a REAL terminal window
+  const handleStartClaude = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setToast('正在打开项目...');
-    try {
-      const resp = await openProject(project.id);
-      if (resp.success) {
-        setToast(`✅ 已打开项目「${project.name}」`);
-      } else {
-        setToast(`❌ 打开失败: ${resp.error || '未知错误'}`);
-      }
-    } catch {
-      setToast('❌ 无法连接后端服务');
+    setToast('正在打开 Claude Code 终端...');
+    const api = window.electronAPI;
+    if (!api) { setToast('❌ Electron API 不可用'); return; }
+
+    // First mark project as active
+    await openProject(project.id);
+
+    // Then open the real terminal
+    const resp = await api.claudeOpenTerminal(project.id, project.path, project.name);
+    if (resp.success && resp.data?.success) {
+      setToast(`✅ ${resp.data.message}`);
+    } else {
+      setToast(`❌ ${resp.data?.message || resp.error || '打开失败'}`);
     }
-    setTimeout(() => setToast(''), 3000);
+    setTimeout(() => setToast(''), 4000);
   };
 
-  const handleOpenTerminal = (e: React.MouseEvent) => {
+  // Open project directory in terminal
+  const handleOpenTerminal = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (window.electronAPI?.ccOpenTerminal) {
-      window.electronAPI.ccOpenTerminal(project.id);
-      setToast('🖥️ 正在打开终端窗口...');
+    setToast('正在打开终端...');
+    const api = window.electronAPI;
+    if (!api) { setToast('❌ Electron API 不可用'); return; }
+
+    const resp = await api.claudeOpenProjectDir(project.id, project.path, project.name);
+    if (resp.success && resp.data?.success) {
+      setToast(`✅ ${resp.data.message}`);
     } else {
-      // Fallback for non-Electron env
-      setToast(`📁 项目路径: ${project.path}`);
+      setToast(`❌ ${resp.data?.message || resp.error || '打开失败'}`);
     }
-    setTimeout(() => setToast(''), 3000);
+    setTimeout(() => setToast(''), 4000);
   };
 
   const handleDelete = async () => {
@@ -107,11 +114,11 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
         {/* Progress */}
         <div className="mb-3">
           <ProgressBar progress={project.progress} status={project.status} />
-          {project.currentStep && project.totalSteps && (
+          {project.currentStep && project.totalSteps ? (
             <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
               步骤 {project.currentStep}/{project.totalSteps}
             </p>
-          )}
+          ) : null}
         </div>
 
         {/* Token & Meta */}
@@ -124,14 +131,14 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
         <div className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
           <button
             className="btn btn-primary text-xs flex-1"
-            onClick={handleOpenProject}
+            onClick={handleStartClaude}
           >
-            {project.status === 'running' ? '🔄 查看' : '▶️ 启动'}
+            ▶️ 启动 Claude
           </button>
           <button
             className="btn btn-ghost text-xs"
             onClick={handleOpenTerminal}
-            title="在终端中打开项目"
+            title="在终端中打开项目目录"
           >
             🖥️ 终端
           </button>
