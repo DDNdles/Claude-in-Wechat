@@ -1,11 +1,11 @@
 /**
- * Claude in WeChat v0.4 — Electron main process.
+ * Claude in WeChat v0.4.1 — Electron main process.
  *
  * - Single instance lock
  * - BrowserWindow with tray icon
  * - Auto-start management
  * - IPC handler registration
- * - WeChat relay service (NEW v0.4)
+ * - WeChat relay service
  * - Window close → minimize-to-tray
  */
 
@@ -42,8 +42,8 @@ function createTrayIcon() {
     return nativeImage.createFromPath(iconPath).resize({ width: 16, height: 16 });
   }
   const size = 16;
-  const buf = Buffer.alloc(size * size * 4, 0);
-  const cx = size / 2, cy = size / 2, r = 6;
+  const buf = Buffer.alloc(size * size * 4);
+  const cx = 8, cy = 8, r = 6;
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const dx = x - cx + 0.5, dy = y - cy + 0.5;
@@ -56,10 +56,13 @@ function createTrayIcon() {
   return nativeImage.createFromBuffer(buf, { width: size, height: size });
 }
 
+/**
+ * In dev mode (not packaged), ALWAYS connect to the Vite dev server.
+ * Only load from dist/ when running as a packaged production app.
+ */
 function resolveEntryHtml(): string {
-  const builtHtml = path.join(__dirname, '..', 'dist', 'index.html');
-  if (IS_DEV && fs.existsSync(builtHtml)) return `file://${builtHtml}`;
   if (IS_DEV) return DEV_SERVER_URL;
+  // Production: load from built dist/
   return path.join(__dirname, '..', 'dist', 'index.html');
 }
 
@@ -127,6 +130,9 @@ function showMainWindow(): void {
     mainWindow.focus();
   } else {
     mainWindow = createMainWindow();
+    // Re-register on re-create
+    registerAllIpcHandlers(mainWindow);
+    setMainWindow(mainWindow);
     loadWindowContent(mainWindow);
   }
 }
@@ -134,9 +140,14 @@ function showMainWindow(): void {
 async function loadWindowContent(win: BrowserWindow): Promise<void> {
   const entryUrl = resolveEntryHtml();
   if (IS_DEV) {
-    try { await win.loadURL(entryUrl); }
-    catch (err) { logger.error('Failed to load dev server. Is Vite running?', err); }
+    // Dev: always connect to Vite dev server
+    try {
+      await win.loadURL(entryUrl);
+    } catch (err) {
+      logger.error('Failed to load Vite dev server — is it running?', err);
+    }
   } else {
+    // Production: load built HTML file
     await win.loadFile(entryUrl);
   }
 }
@@ -153,22 +164,32 @@ function quitApp(): void {
 
 async function onAppReady(): Promise<void> {
   ensureDirs();
-  registerAllIpcHandlers(mainWindow!);
+
+  // 1. Create window FIRST
+  mainWindow = createMainWindow();
+
+  // 2. THEN register IPC handlers (window must exist)
+  registerAllIpcHandlers(mainWindow);
+
+  // 3. Set up relay
+  setMainWindow(mainWindow);
 
   // Auto-start check
   const configService = createConfigService();
   const autoStarter = new AutoStarter(APP_NAME);
   try {
     const settings = configService.getAll();
-    if (settings.autoStart) { if (!autoStarter.isEnabled()) autoStarter.enable(); }
-    else { if (autoStarter.isEnabled()) autoStarter.disable(); }
+    if (settings.autoStart) {
+      if (!autoStarter.isEnabled()) autoStarter.enable();
+    } else {
+      if (autoStarter.isEnabled()) autoStarter.disable();
+    }
   } catch (err) { logger.warn('Could not sync auto-start', err); }
 
-  mainWindow = createMainWindow();
+  // 4. Create tray
   tray = createTray();
 
-  // v0.4: Start relay service and set up for IPC
-  setMainWindow(mainWindow);
+  // 5. Start relay
   try {
     startRelay();
     logger.info('WeChat relay service auto-started');
@@ -176,6 +197,7 @@ async function onAppReady(): Promise<void> {
     logger.warn('Could not auto-start relay service', err);
   }
 
+  // 6. Load content
   await loadWindowContent(mainWindow);
 }
 
@@ -189,8 +211,14 @@ if (!gotTheLock) {
   app.whenReady().then(onAppReady);
   app.on('window-all-closed', () => { /* keep alive for tray */ });
   app.on('activate', () => {
-    if (mainWindow === null) { mainWindow = createMainWindow(); loadWindowContent(mainWindow); }
-    else showMainWindow();
+    if (mainWindow === null) {
+      mainWindow = createMainWindow();
+      registerAllIpcHandlers(mainWindow);
+      setMainWindow(mainWindow);
+      loadWindowContent(mainWindow);
+    } else {
+      showMainWindow();
+    }
   });
   app.on('before-quit', () => {
     isQuitting = true;

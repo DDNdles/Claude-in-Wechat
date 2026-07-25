@@ -68,7 +68,7 @@ function App() {
         <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
           🔷 Claude in WeChat
         </h1>
-        <p className="text-xs text-gray-500 mt-1">v0.4.0</p>
+        <p className="text-xs text-gray-500 mt-1">v0.4.1</p>
       </div>
       <nav className="px-2 space-y-1">
         <button
@@ -126,7 +126,7 @@ function App() {
           <span className="text-gray-600">|</span>
           <span>项目: {projects.length}</span>
           <span className="text-gray-600">|</span>
-          <span className="text-gray-500">v0.4.0</span>
+          <span className="text-gray-500">v0.4.1</span>
         </div>
       }
     >

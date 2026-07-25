@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.1 (2026-07-25)
+
+### 🔧 Critical Fixes
+- **Electron API unavailable bug** — Fixed two root causes:
+  1. `resolveEntryHtml()` was loading stale `dist/index.html` as a plain file instead of Vite dev server, causing page to load without Electron context
+  2. IPC handlers registered with `null` mainWindow (called `registerAllIpcHandlers(mainWindow!)` before `mainWindow = createMainWindow()`)
+- **CSP blocked localhost** — Updated Content-Security-Policy in `index.html` to allow `http://localhost:*` and `ws://localhost:*`
+
+---
+
 ## v0.4.0 (2026-07-25)
 
 ### 🚀 New Features
