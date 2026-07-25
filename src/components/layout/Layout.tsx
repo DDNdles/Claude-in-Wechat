@@ -62,7 +62,7 @@ export default function Layout({
               <h1 className="text-sm font-bold text-foreground leading-tight">
                 Claude in WeChat
               </h1>
-              <p className="text-[11px] text-muted-foreground">v0.5.3</p>
+              <p className="text-[11px] text-muted-foreground">v0.5.4</p>
             </div>
           </div>
         </div>

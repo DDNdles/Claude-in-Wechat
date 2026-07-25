@@ -25,6 +25,7 @@ import { registerAllIpcHandlers } from './ipc/index';
 import { createConfigService } from './services/config-service';
 import { AutoStarter } from './services/auto-starter';
 import { start as startRelay, stop as stopRelay, setMainWindow } from './services/relay-service';
+import { scanExternalProjects, importExternalProjects, syncExternalProjectStates } from './services/project-manager';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -200,10 +201,25 @@ async function onAppReady(): Promise<void> {
     logger.warn('Could not auto-start relay service', err);
   }
 
-  // 6. Load content
+
+  // 6. Auto-import external Claude projects
+  try {
+    const discovered = scanExternalProjects();
+    if (discovered.length > 0) importExternalProjects(discovered);
+    syncExternalProjectStates();
+    setInterval(() => {
+      try {
+        const nd = scanExternalProjects();
+        if (nd.length > 0) importExternalProjects(nd);
+        syncExternalProjectStates();
+      } catch { /* silent */ }
+    }, 30000);
+  } catch (err) { logger.warn("Scanner init failed", err); }
+
+  // 7. Load content
   await loadWindowContent(mainWindow);
 
-  // 7. Check for updates (production only)
+  // 8. Check for updates (production only)
   if (!IS_DEV) {
     autoUpdater.checkForUpdatesAndNotify();
     logger.info("Auto-update check initiated");

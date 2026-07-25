@@ -420,3 +420,203 @@ export function isProjectRunning(id: string): boolean {
   if (proj?.pid && isProcessAlive(proj.pid)) return true;
   return false;
 }
+
+// External project auto-sync
+
+export interface ScannedProject {
+  pid: number;
+  cwd: string;
+  name: string;
+  commandLine: string;
+}
+
+/**
+ * Scan for running claude.exe processes that are NOT already registered.
+ * Returns newly discovered projects that should be imported.
+ */
+export function scanExternalProjects(): ScannedProject[] {
+  try {
+    if (process.platform !== 'win32') return [];
+
+    // Get all claude.exe processes with their command lines
+    const result = execSync(
+      'wmic process where "name=\'claude.exe\'" get ProcessId,CommandLine /format:csv 2>nul',
+      { encoding: 'utf-8', windowsHide: true },
+    );
+
+    const registeredProjects = readRegistry();
+    const knownPaths = new Set(registeredProjects.map(p => p.path.toLowerCase()));
+    const knownPids = new Set(
+      registeredProjects
+        .filter(p => p.pid && isProcessAlive(p.pid!))
+        .map(p => p.pid),
+    );
+    const discovered: ScannedProject[] = [];
+
+    for (const line of result.split('\n')) {
+      if (!line.includes('claude')) continue;
+
+      // Parse CSV: NodeName,ProcessId,CommandLine
+      const parts = line.split(',');
+      const pid = parseInt(parts[1], 10);
+      if (!pid || isNaN(pid)) continue;
+
+      const commandLine = parts.slice(2).join(',').replace(/\r/g, '');
+      if (!commandLine.toLowerCase().includes('claude')) continue;
+
+      // Extract working directory from claude process
+      // Claude Code's typical invocation: node ... claude (with cwd being the project)
+      // For wmic, we need to find the actual cwd - use PowerShell
+      let cwd = '';
+      try {
+        const cwdResult = execSync(
+          `powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter 'ProcessId=${pid}').ExecutablePath | Split-Path" 2>nul`,
+          { encoding: 'utf-8', windowsHide: true },
+        );
+        const exePath = cwdResult.trim();
+        // Try getting parent cmd.exe's working directory
+        const parentResult = execSync(
+          `wmic process where "processid=${pid}" get parentprocessid /format:csv 2>nul`,
+          { encoding: 'utf-8', windowsHide: true },
+        );
+        const ppidLine = parentResult.split('\n')[1];
+        if (ppidLine) {
+          const ppid = parseInt(ppidLine.split(',')[1], 10);
+          if (ppid && !isNaN(ppid)) {
+            // Get cmd.exe's working directory if parent is cmd
+            const cmdCwd = execSync(
+              `powershell -NoProfile -Command "try { $p = Get-WmiObject Win32_Process -Filter 'ProcessId=${ppid}'; if ($p.Name -eq 'cmd.exe') { $sw = Get-WmiObject Win32_LogicalProgramGroupItem | Out-Null; $p.CommandLine -match '.*cd /d ''([^'']+).*' | Out-Null; $Matches[1] } } catch { '' }" 2>nul`,
+              { encoding: 'utf-8', windowsHide: true },
+            );
+            cwd = cmdCwd.trim();
+          }
+        }
+      } catch {
+        // Fallback: try to guess from command line
+      }
+
+      if (!cwd) {
+        // Fallback: scan known project directories for best match
+        if (fs.existsSync(PROJECTS_DIR)) {
+          const dirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
+            .filter(d => d.isDirectory());
+          for (const d of dirs) {
+            const fullPath = path.join(PROJECTS_DIR, d.name);
+            // Check if this dir has a .claude directory (marker of a Claude project)
+            if (fs.existsSync(path.join(fullPath, '.claude'))) {
+              cwd = fullPath;
+              break;
+            }
+          }
+        }
+      }
+
+      const normalizedCwd = cwd.toLowerCase();
+      if (!cwd || knownPaths.has(normalizedCwd)) continue;
+
+      const name = path.basename(cwd);
+
+      discovered.push({ pid, cwd, name, commandLine });
+    }
+
+    return discovered;
+  } catch (err) {
+    warn('Failed to scan external projects', err);
+    return [];
+  }
+}
+
+/**
+ * Auto-import discovered external projects into the registry.
+ */
+export function importExternalProjects(discovered: ScannedProject[]): Project[] {
+  const imported: Project[] = [];
+
+  for (const ext of discovered) {
+    try {
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: generateId(),
+        name: ext.name,
+        path: ext.cwd,
+        status: 'running',
+        progress: 0,
+        tasks: [],
+        sessionTokens: 0,
+        dailyTokens: 0,
+        pid: ext.pid,
+        createdAt: now,
+        lastActiveAt: now,
+        launchMode: 'desktop',
+      };
+
+      const projects = readRegistry();
+      projects.push(project);
+      writeRegistry(projects);
+      imported.push(project);
+      info(`Auto-imported external project: ${ext.name} (pid=${ext.pid})`);
+    } catch (err) {
+      warn(`Failed to import external project: ${ext.name}`, err);
+    }
+  }
+
+  return imported;
+}
+
+/**
+ * Sync external project states: update PIDs for running projects,
+ * mark projects with dead PIDs as idle.
+ */
+export function syncExternalProjectStates(): number {
+  let changed = 0;
+  const projects = readRegistry();
+  const now = new Date().toISOString();
+
+  for (const proj of projects) {
+    if (proj.launchMode === 'desktop') {
+      // Check if a claude process is running in this directory
+      const orphanPid = findClaudeInDir(proj.path);
+      if (orphanPid && proj.status !== 'running') {
+        proj.status = 'running';
+        proj.pid = orphanPid;
+        proj.lastActiveAt = now;
+        changed++;
+      } else if (!orphanPid && proj.status === 'running' && !isProcessAlive(proj.pid || -1)) {
+        proj.status = 'idle';
+        proj.pid = undefined;
+        proj.lastActiveAt = now;
+        changed++;
+      }
+    }
+  }
+
+  if (changed > 0) {
+    writeRegistry(projects);
+    info(`Synced ${changed} external project state(s)`);
+  }
+
+  return changed;
+}
+
+function findClaudeInDir(cwd: string): number | null {
+  try {
+    if (process.platform !== 'win32') return null;
+    const result = execSync(
+      'wmic process where "name=\'claude.exe\'" get ProcessId,CommandLine /format:csv 2>nul',
+      { encoding: 'utf-8', windowsHide: true },
+    );
+    const norm = cwd.toLowerCase().replace(/\\/g, '\\\\');
+    for (const line of result.split('\n')) {
+      if (line.toLowerCase().includes(norm)) {
+        const match = line.match(/\d+/);
+        if (match) {
+          const pid = parseInt(match[0], 10);
+          if (pid && isProcessAlive(pid)) return pid;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}

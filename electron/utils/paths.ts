@@ -13,7 +13,7 @@ const HOME = homedir();
 export const APP_DATA_DIR = path.join(HOME, '.claude-in-wechat');
 
 /** Project storage — where project folders live */
-export const PROJECTS_DIR = path.join(HOME, 'projects', 'Wechat');
+export const PROJECTS_DIR = path.join(HOME, 'Claude in Wechat', 'projects');
 
 /** Project registry file */
 export const REGISTRY_FILE = path.join(APP_DATA_DIR, 'projects.json');

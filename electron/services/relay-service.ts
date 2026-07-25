@@ -1,21 +1,20 @@
-// ═══════════════════════════════════════════════════════════════
-// Relay Service v0.4
+// Relay Service v0.5.4
 // Central WeChat message polling & routing orchestrator.
-// Polls WeChat for messages, routes commands, handles text/decisions.
-// ═══════════════════════════════════════════════════════════════
+// Polls WeChat for messages, routes commands, forwards tasks to Claude.
 
 import { BrowserWindow } from 'electron';
 import { info, warn, error, debug } from '../utils/logger';
 import { getUpdates, sendMessage, isConfigured, extractText } from './wechat-sender';
 import { parseCommand, handleCommand, isNumericReply } from './command-handler';
 import { getActiveProject } from './project-manager';
+import { forwardTask } from './claude-launcher';
 import {
   startWatching, stopWatching,
   tryMatchDecision, resolveDecision,
   getPendingDecisions, getOldestPendingDecision,
 } from './hook-events-watcher';
 
-// ── Types ─────────────────────────────────────────────────────────
+// Types
 
 export interface RelayStatus {
   running: boolean;
@@ -27,7 +26,7 @@ export interface RelayStatus {
   lastError: string | null;
 }
 
-// ── State ─────────────────────────────────────────────────────────
+// State
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -36,9 +35,9 @@ let messagesToday = 0;
 let lastPollAt: string | null = null;
 let lastError: string | null = null;
 let mainWindow: BrowserWindow | null = null;
-let pollInterval = 5000; // ms
+let pollInterval = 5000;
 
-// ── Public API ────────────────────────────────────────────────────
+// Public API
 
 export function setMainWindow(win: BrowserWindow): void {
   mainWindow = win;
@@ -54,19 +53,15 @@ export function start(): void {
 
   info('Relay service starting...');
 
-  // Start hook events watcher (completion notifications)
   startWatching();
 
-  // Reset daily counter if needed
   messagesToday = 0;
 
   if (!isConfigured()) {
     warn('Relay service: WeChat not configured, polling will be skipped');
-    // Still mark as running so the status shows correctly
     return;
   }
 
-  // Start polling loop
   startPolling();
   info('Relay service started');
 }
@@ -100,14 +95,14 @@ export async function sendReply(text: string): Promise<boolean> {
   return result.success;
 }
 
-// ── Internal: Polling ─────────────────────────────────────────────
+// Internal: Polling
 
 function startPolling(): void {
   if (polling) return;
   if (!isConfigured()) return;
 
   polling = true;
-  pollOnce(); // First poll immediately
+  pollOnce();
   pollingTimer = setInterval(pollOnce, pollInterval);
   info(`Polling started (interval: ${pollInterval}ms)`);
 }
@@ -140,7 +135,7 @@ async function pollOnce(): Promise<void> {
   }
 }
 
-// ── Internal: Message Processing ──────────────────────────────────
+// Internal: Message Processing
 
 async function processMessage(msg: any): Promise<void> {
   const text = extractText(msg);
@@ -149,54 +144,53 @@ async function processMessage(msg: any): Promise<void> {
   messagesToday++;
   debug(`WeChat message: "${text.slice(0, 100)}"`);
 
-  // Send to renderer for real-time display
   notifyRenderer('message_received', { text, fromUserId: msg.from_user_id });
 
-  // 1. Check if it's a numeric reply for a pending decision
+  // 1. Numeric reply for a pending decision
   if (isNumericReply(text)) {
     const decision = tryMatchDecision(text);
     if (decision) {
       const num = parseInt(text, 10);
       const result = resolveDecision(decision.decisionId, num - 1);
       if (result.success) {
-        await sendMessage(`收到，已选择「${result.label}」`);
+        await sendMessage(`Received, selected "${result.label}"`);
         return;
       }
     }
   }
 
-  // 2. Check if it's a command
+  // 2. Slash command
   const parsed = parseCommand(text);
   if (parsed.isCommand && parsed.command !== 'numeric') {
-    // Send "收到" immediately
-    await sendMessage('收到');
-
-    // Execute the command
+    await sendMessage('Received');
     const response = await handleCommand(parsed.command, parsed.args);
-
-    // Send response
     await sendMessage(response);
     info(`Command handled: /${parsed.command} ${parsed.args.join(' ')}`);
     return;
   }
 
-  // 3. Plain text message — forward to active project's Claude Code
-  await sendMessage('收到');
+  // 3. Plain text - forward to Claude Code via stdin
+  await sendMessage('Received');
 
   const active = getActiveProject();
   if (active.success && active.data) {
-    // The active project exists — this is a task message for Claude
-    // The actual forwarding to Claude Code depends on whether CC is running
-    // For now, acknowledge and tell the user
-    const projectName = active.data.name;
-    await sendMessage(`已转发到项目「${projectName}」。\nClaude Code 正在处理...`);
-    info(`Task forwarded to project: ${projectName}`);
+    const project = active.data;
+    const result = await forwardTask(project.id, project.path, project.name, text);
+    if (result.success) {
+      await sendMessage(`Forwarded to project "${project.name}".`);
+      if (result.message && result.message.length < 500) {
+        await sendMessage(result.message);
+      }
+    } else {
+      await sendMessage(`Forward failed: ${result.message}`);
+    }
+    info(`Task forwarded to project: ${project.name}`);
   } else {
-    await sendMessage('没有活跃项目。请先用 /open 项目名 打开一个项目，或 /new 项目名 创建新项目。');
+    await sendMessage('No active project. Use /open <name> or /new <name> first.');
   }
 }
 
-// ── Internal: Renderer Notifications ──────────────────────────────
+// Internal: Renderer Notifications
 
 function notifyRenderer(type: string, data: unknown): void {
   try {
@@ -212,9 +206,8 @@ function notifyRenderer(type: string, data: unknown): void {
   }
 }
 
-// ── Event Handlers ────────────────────────────────────────────────
+// Event Handlers
 
-// Listen for hook event decisions and forward to WeChat
 import { setQuestionHandler, setSessionStopHandler, setDangerousHandler } from './hook-events-watcher';
 
 setQuestionHandler(async (decision) => {
@@ -222,7 +215,6 @@ setQuestionHandler(async (decision) => {
 });
 
 setSessionStopHandler(async (projectName) => {
-  // Update renderer
   notifyRenderer('project_completed', { projectName });
 });
 
