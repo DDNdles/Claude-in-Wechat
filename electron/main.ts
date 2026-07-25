@@ -16,7 +16,8 @@ import {
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { autoUpdater } from 'electron-updater';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 import * as logger from './utils/logger';
 import { ensureDirs } from './utils/paths';
 import { isWindows } from './utils/platform';
