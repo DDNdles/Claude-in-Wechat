@@ -14,7 +14,15 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'electron-store'],
+              external: [
+                'electron',
+                'electron-store',
+                'electron-updater',
+                'builder-util-runtime',
+                'js-yaml',
+                'semver',
+                'lazy-val',
+              ],
             },
           },
         },
