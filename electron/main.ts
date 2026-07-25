@@ -82,6 +82,11 @@ function createTrayIcon(): nativeImage {
 
 /** Resolve the HTML entry point for the renderer */
 function resolveEntryHtml(): string {
+  // In dev mode: check if Vite is running, fall back to built files
+  const builtHtml = path.join(__dirname, '..', 'dist', 'index.html');
+  if (IS_DEV && fs.existsSync(builtHtml)) {
+    return `file://${builtHtml}`;
+  }
   if (IS_DEV) {
     return DEV_SERVER_URL;
   }
@@ -253,6 +258,26 @@ async function onAppReady(): Promise<void> {
 
   // ── Register all IPC handlers ───────────────────────────────────
   registerAllIpcHandlers(mainWindow!);
+
+  // ── Auto-start WeChat relay ─────────────────────────────────────
+  try {
+    const relayModule = await import('./services/relay-service');
+    const pmModule = await import('./services/project-manager');
+    const relay = relayModule.getRelayService();
+    relay.setProjectManager({
+      openProject: pmModule.openProject,
+      listProjects: pmModule.listProjects,
+      createProject: pmModule.createProject,
+      deleteProject: pmModule.deleteProject,
+      renameProject: pmModule.renameProject,
+      getProject: pmModule.getProject,
+      updateProjectStatus: pmModule.updateProjectStatus,
+    } as any);
+    await relay.start();
+    logger.info('WeChat relay auto-started');
+  } catch (err: any) {
+    logger.error(`Failed to auto-start relay: ${err.message}`);
+  }
 
   // ── Auto-start check ────────────────────────────────────────────
   const configService = createConfigService();
