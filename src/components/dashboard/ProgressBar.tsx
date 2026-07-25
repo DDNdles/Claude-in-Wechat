@@ -1,4 +1,6 @@
 import type { ProjectStatus } from '../../../shared/types';
+import { Progress } from '@shared/components/ui/progress';
+import { cn } from '@shared/lib/utils';
 
 interface ProgressBarProps {
   progress: number;
@@ -6,22 +8,17 @@ interface ProgressBarProps {
 }
 
 export default function ProgressBar({ progress, status }: ProgressBarProps) {
-  const isRunning = status === 'running';
-  const isCompleted = status === 'completed';
+  const clamped = Math.min(100, Math.max(0, progress));
 
   return (
-    <div className="progress-bar-bg">
-      <div
-        className={`progress-bar-fill ${isRunning ? 'running' : ''}`}
-        style={{
-          width: `${Math.min(100, Math.max(0, progress))}%`,
-          background: isCompleted
-            ? 'linear-gradient(90deg, #8b5cf6, #a78bfa)'
-            : isRunning
-              ? 'linear-gradient(90deg, #3b82f6, #22c55e)'
-              : 'rgba(255,255,255,0.1)',
-        }}
-      />
-    </div>
+    <Progress
+      value={clamped}
+      className={cn(
+        'h-2',
+        status === 'completed' && '[&>div]:bg-violet-500',
+        status === 'error' && '[&>div]:bg-destructive',
+        status === 'running' && 'animate-pulse-glow',
+      )}
+    />
   );
 }

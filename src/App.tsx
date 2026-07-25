@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useProjectStore } from './stores/projectStore';
+import { useRelayStore } from './stores/relayStore';
+import { useSettingsStore } from './stores/settingsStore';
 import Layout from './components/layout/Layout';
 import ProjectList from './components/dashboard/ProjectList';
 import ProjectDetail from './components/project/ProjectDetail';
 import SettingsPanel from './components/settings/SettingsPanel';
 import SetupWizard from './components/wizard/SetupWizard';
-import { useProjectStore } from './stores/projectStore';
-import { useRelayStore } from './stores/relayStore';
-import { useSettingsStore } from './stores/settingsStore';
 
 type Page = 'dashboard' | 'project' | 'settings';
 
@@ -30,7 +30,6 @@ function App() {
     init();
   }, []);
 
-  // v0.4: Start auto-refresh polling
   useEffect(() => {
     useProjectStore.getState().startPolling();
     return () => {
@@ -38,7 +37,6 @@ function App() {
     };
   }, []);
 
-  // Show setup wizard only after settings have loaded
   useEffect(() => {
     if (initialized && !settings.wechatEnabled) {
       setShowSetup(true);
@@ -62,33 +60,6 @@ function App() {
     refreshStatus();
   }, [loadSettings, refreshStatus]);
 
-  const sidebar = (
-    <div>
-      <div className="px-4 py-6">
-        <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
-          🔷 Claude in WeChat
-        </h1>
-        <p className="text-xs text-gray-500 mt-1">v0.4.1</p>
-      </div>
-      <nav className="px-2 space-y-1">
-        <button
-          className={`sidebar-link w-full text-left ${page === 'dashboard' ? 'active' : ''}`}
-          onClick={() => { setPage('dashboard'); setSelectedProjectId(null); }}
-        >
-          <span>📊</span>
-          <span>仪表盘</span>
-        </button>
-        <button
-          className={`sidebar-link w-full text-left ${page === 'settings' ? 'active' : ''}`}
-          onClick={() => setPage('settings')}
-        >
-          <span>⚙️</span>
-          <span>设置</span>
-        </button>
-      </nav>
-    </div>
-  );
-
   const renderPage = () => {
     if (showSetup) {
       return <SetupWizard onComplete={handleSetupComplete} />;
@@ -109,26 +80,16 @@ function App() {
     }
   };
 
+  const runningProjects = projects.filter(p => p.status === 'running');
+
   return (
     <Layout
-      sidebar={sidebar}
-      statusBar={
-        <div className="flex items-center gap-4 text-xs">
-          <span className="flex items-center gap-1.5">
-            <span className={`status-dot ${hasAccount ? 'running' : 'idle'}`} />
-            <span>微信: {hasAccount ? '已绑定' : '未绑定'}</span>
-          </span>
-          <span className="text-gray-600">|</span>
-          <span className="flex items-center gap-1.5">
-            <span className={`status-dot ${running ? 'running' : 'idle'}`} />
-            <span>桥接: {running ? '运行中' : '未启动'}</span>
-          </span>
-          <span className="text-gray-600">|</span>
-          <span>项目: {projects.length}</span>
-          <span className="text-gray-600">|</span>
-          <span className="text-gray-500">v0.4.1</span>
-        </div>
-      }
+      currentPage={page}
+      onNavigate={(p) => { setPage(p); setSelectedProjectId(null); }}
+      hasAccount={hasAccount}
+      running={running}
+      projectCount={projects.length}
+      runningCount={runningProjects.length}
     >
       {renderPage()}
     </Layout>

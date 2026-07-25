@@ -1,21 +1,40 @@
 import { useState } from 'react';
 import type { Project } from '../../../shared/types';
 import ProgressBar from './ProgressBar';
-import ConfirmDialog from '../common/ConfirmDialog';
-import Toast from '../common/Toast';
 import { useProjectStore } from '../../stores/projectStore';
+import { Card } from '@shared/components/ui/card';
+import { Button } from '@shared/components/ui/button';
+import { Badge } from '@shared/components/ui/badge';
+import { Separator } from '@shared/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@shared/components/ui/dialog';
+import { toast } from 'sonner';
+import {
+  Play,
+  Terminal,
+  Trash2,
+  Clock,
+  Coins,
+  Folder,
+} from 'lucide-react';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
 }
 
-const STATUS_CONFIG: Record<string, { emoji: string; label: string; className: string }> = {
-  running: { emoji: '🟢', label: '运行中', className: 'running' },
-  idle: { emoji: '⚪', label: '空闲', className: 'idle' },
-  completed: { emoji: '✅', label: '已完成', className: 'completed' },
-  error: { emoji: '❌', label: '错误', className: 'error' },
-  waiting: { emoji: '⏳', label: '等待中', className: 'idle' },
+const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+  running: { label: '运行中', variant: 'default' },
+  idle: { label: '空闲', variant: 'secondary' },
+  completed: { label: '已完成', variant: 'outline' },
+  error: { label: '错误', variant: 'destructive' },
+  waiting: { label: '等待中', variant: 'secondary' },
 };
 
 function formatTokens(n: number): string {
@@ -35,130 +54,140 @@ function timeAgo(isoString: string): string {
 
 export default function ProjectCard({ project, onClick }: ProjectCardProps) {
   const [showDelete, setShowDelete] = useState(false);
-  const [toast, setToast] = useState('');
   const statusConfig = STATUS_CONFIG[project.status] || STATUS_CONFIG.idle;
   const { deleteProject, openProject } = useProjectStore();
 
-  // Launch Claude in a REAL terminal window
   const handleStartClaude = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setToast('正在打开 Claude Code 终端...');
     const api = window.electronAPI;
-    if (!api) { setToast('❌ Electron API 不可用'); return; }
+    if (!api) { toast.error('Electron API 不可用'); return; }
 
-    // First mark project as active
-    await openProject(project.id);
-
-    // Then open the real terminal
-    const resp = await api.claudeOpenTerminal(project.id, project.path, project.name);
-    if (resp.success) {
-      setToast(`✅ ${resp.data?.message || '已打开终端'}`);
-    } else {
-      setToast(`❌ ${resp.error || '打开失败'}`);
-    }
-    setTimeout(() => setToast(''), 4000);
+    toast.promise(
+      (async () => {
+        await openProject(project.id);
+        const resp = await api.claudeOpenTerminal(project.id, project.path, project.name);
+        if (!resp.success) throw new Error(resp.error || '启动失败');
+        return resp;
+      })(),
+      {
+        loading: '正在启动 Claude Code...',
+        success: () => 'Claude Code 已启动',
+        error: (err) => `启动失败: ${err.message}`,
+      },
+    );
   };
 
-  // Open project directory in terminal
   const handleOpenTerminal = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    setToast('正在打开终端...');
     const api = window.electronAPI;
-    if (!api) { setToast('❌ Electron API 不可用'); return; }
-
+    if (!api) { toast.error('Electron API 不可用'); return; }
     const resp = await api.claudeOpenProjectDir(project.id, project.path, project.name);
-    if (resp.success) {
-      setToast(`✅ ${resp.data?.message || '已打开终端'}`);
-    } else {
-      setToast(`❌ ${resp.error || '打开失败'}`);
-    }
-    setTimeout(() => setToast(''), 4000);
+    if (resp.success) toast.success(resp.data?.message || '终端已打开');
+    else toast.error(resp.error || '打开失败');
   };
 
   const handleDelete = async () => {
-    setToast('正在删除...');
     const resp = await deleteProject(project.id);
-    if (resp.success) {
-      setToast(`✅ 已删除「${project.name}」`);
-    } else {
-      setToast(`❌ 删除失败: ${resp.error || '未知错误'}`);
-    }
+    if (resp.success) toast.success(`已删除「${project.name}」`);
+    else toast.error(resp.error || '删除失败');
     setShowDelete(false);
-    setTimeout(() => setToast(''), 3000);
   };
 
   return (
     <>
-      <div className="card cursor-pointer group" onClick={onClick}>
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-base truncate">📁 {project.name}</h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className={`status-dot ${statusConfig.className}`} />
-              <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                {statusConfig.emoji} {statusConfig.label}
-              </span>
+      <Card
+        className="cursor-pointer transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 group"
+        onClick={onClick}
+      >
+        <div className="p-4 space-y-3">
+          {/* Header */}
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <Folder className="w-4 h-4 text-muted-foreground shrink-0" />
+                <h3 className="font-semibold text-sm truncate">{project.name}</h3>
+              </div>
+              <div className="flex items-center gap-2 mt-1.5">
+                <Badge variant={statusConfig.variant} className="h-5 px-1.5 text-[10px]">
+                  {statusConfig.label}
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">
+                  {timeAgo(project.lastActiveAt)}
+                </span>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+              onClick={(e) => { e.stopPropagation(); setShowDelete(true); }}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          </div>
+
+          {/* Progress */}
+          <div className="space-y-1">
+            <ProgressBar progress={project.progress} status={project.status} />
+            {project.currentStep && project.totalSteps ? (
+              <p className="text-[11px] text-muted-foreground text-right">
+                步骤 {project.currentStep}/{project.totalSteps}
+              </p>
+            ) : null}
+          </div>
+
+          {/* Meta */}
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Coins className="w-3 h-3" />
+              {formatTokens(project.sessionTokens)}
+            </div>
+            <div className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {project.launchMode === 'wechat' ? '微信' : '桌面'}
             </div>
           </div>
-          {/* Delete button (shown on hover) */}
-          <button
-            className="btn btn-ghost text-xs px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity text-red-400 hover:text-red-300"
-            onClick={(e) => { e.stopPropagation(); setShowDelete(true); }}
-            title="删除项目"
-          >
-            🗑️
-          </button>
+
+          <Separator />
+
+          {/* Actions */}
+          <div className="flex gap-1.5">
+            <Button
+              variant="default"
+              size="sm"
+              className="flex-1 h-8 text-xs"
+              onClick={handleStartClaude}
+            >
+              <Play className="w-3 h-3 mr-1" />
+              启动
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs"
+              onClick={handleOpenTerminal}
+            >
+              <Terminal className="w-3 h-3 mr-1" />
+              终端
+            </Button>
+          </div>
         </div>
+      </Card>
 
-        {/* Progress */}
-        <div className="mb-3">
-          <ProgressBar progress={project.progress} status={project.status} />
-          {project.currentStep && project.totalSteps ? (
-            <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-              步骤 {project.currentStep}/{project.totalSteps}
-            </p>
-          ) : null}
-        </div>
-
-        {/* Token & Meta */}
-        <div className="flex items-center justify-between text-xs" style={{ color: 'var(--color-text-muted)' }}>
-          <span>💰 {formatTokens(project.sessionTokens)} tok</span>
-          <span>{timeAgo(project.lastActiveAt)}</span>
-        </div>
-
-        {/* Action buttons */}
-        <div className="flex gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
-          <button
-            className="btn btn-primary text-xs flex-1"
-            onClick={handleStartClaude}
-          >
-            ▶️ 启动 Claude
-          </button>
-          <button
-            className="btn btn-ghost text-xs"
-            onClick={handleOpenTerminal}
-            title="在终端中打开项目目录"
-          >
-            🖥️ 终端
-          </button>
-        </div>
-      </div>
-
-      {/* Delete confirmation */}
-      {showDelete && (
-        <ConfirmDialog
-          title="删除项目"
-          message={`确定要删除「${project.name}」吗？项目文件夹会保留在磁盘上。`}
-          confirmLabel="删除"
-          danger
-          onConfirm={handleDelete}
-          onCancel={() => setShowDelete(false)}
-        />
-      )}
-
-      {/* Toast notification */}
-      {toast && <Toast message={toast} onClose={() => setToast('')} />}
+      <Dialog open={showDelete} onOpenChange={setShowDelete}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除项目</DialogTitle>
+            <DialogDescription>
+              确定要删除「{project.name}」吗？项目文件夹会保留在磁盘上。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDelete(false)}>取消</Button>
+            <Button variant="destructive" onClick={handleDelete}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

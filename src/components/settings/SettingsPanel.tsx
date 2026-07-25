@@ -1,6 +1,25 @@
 import { useSettingsStore } from '../../stores/settingsStore';
 import { useRelayStore } from '../../stores/relayStore';
 import { useState, useEffect } from 'react';
+import { Card } from '@shared/components/ui/card';
+import { Button } from '@shared/components/ui/button';
+import { Input } from '@shared/components/ui/input';
+import { Switch } from '@shared/components/ui/switch';
+import { Badge } from '@shared/components/ui/badge';
+import { Separator } from '@shared/components/ui/separator';
+import { toast } from 'sonner';
+import {
+  Cable,
+  Link,
+  Plug,
+  Play,
+  Square,
+  QrCode,
+  Wrench,
+  Monitor,
+  Bell,
+  Sun,
+} from 'lucide-react';
 
 export default function SettingsPanel() {
   const { settings, updateSetting } = useSettingsStore();
@@ -8,6 +27,7 @@ export default function SettingsPanel() {
   const [wechatMsg, setWechatMsg] = useState('');
   const [hookMsg, setHookMsg] = useState('');
   const [hookStatus, setHookStatus] = useState<{ installed: boolean }>({ installed: false });
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     refreshStatus();
@@ -26,22 +46,28 @@ export default function SettingsPanel() {
   // ── WeChat ──────────────────────────────────────────────────────
 
   const handleWeChatLogin = async () => {
-    setWechatMsg('正在生成二维码...');
+    setLoading(true);
     const result = await loginWeChat();
     setWechatMsg(result.message);
-    if (result.success) await refreshStatus();
+    if (result.success) {
+      toast.success('微信绑定成功');
+      await refreshStatus();
+    } else {
+      toast.error(result.message || '绑定失败');
+    }
+    setLoading(false);
   };
 
   const handleStartBridge = async () => {
-    setWechatMsg('正在启动桥接服务...');
     const result = await startBridge();
-    setWechatMsg(result.message);
+    if (result.success) toast.success('桥接已启动');
+    else toast.error(result.message || '启动失败');
   };
 
   const handleStopBridge = async () => {
-    setWechatMsg('正在停止桥接服务...');
     const result = await stopBridge();
-    setWechatMsg(result.message);
+    if (result.success) toast.success('桥接已停止');
+    else toast.error(result.message || '停止失败');
   };
 
   // ── Hooks ───────────────────────────────────────────────────────
@@ -52,10 +78,13 @@ export default function SettingsPanel() {
     if (!api) { setHookMsg('❌ 需要 Electron 环境'); return; }
     const resp = await api.hooksInstall();
     if (resp.success && resp.data) {
-      setHookMsg((resp.data as any).message);
+      const msg = (resp.data as any).message || '配置完成';
+      setHookMsg(msg);
+      toast.success('Hooks 配置完成');
       loadHookStatus();
     } else {
       setHookMsg(`❌ ${resp.error || '配置失败'}`);
+      toast.error(resp.error || '配置失败');
     }
   };
 
@@ -66,6 +95,7 @@ export default function SettingsPanel() {
     const resp = await api.hooksRemove();
     if (resp.success && resp.data) {
       setHookMsg((resp.data as any).message);
+      toast.success('Hooks 已移除');
       loadHookStatus();
     } else {
       setHookMsg(`❌ ${resp.error || '移除失败'}`);
@@ -73,131 +103,151 @@ export default function SettingsPanel() {
   };
 
   return (
-    <div className="space-y-6 max-w-2xl">
-      <h2 className="text-2xl font-bold">⚙️ 设置</h2>
+    <div className="space-y-5 max-w-2xl">
+      <h2 className="text-2xl font-bold tracking-tight">设置</h2>
 
       {/* WeChat Bridge */}
-      <div className="card">
-        <h3 className="font-semibold mb-4">🔗 微信桥接</h3>
-        <div className="space-y-3">
-          {/* Status */}
-          <div className="flex items-center gap-2">
-            <span className={`status-dot ${hasAccount ? 'running' : 'idle'}`} />
-            <span>微信: {hasAccount ? '🟢 已绑定' : '⚪ 未绑定'}</span>
-            <span className="text-gray-600">|</span>
-            <span className={`status-dot ${running ? 'running' : 'idle'}`} />
-            <span>桥接: {running ? '🟢 运行中' : '⚪ 未启动'}</span>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button className="btn btn-primary" onClick={handleWeChatLogin}>
-              {hasAccount ? '🔄 重新扫码绑定' : '📱 扫码绑定微信'}
-            </button>
-            {configured && !running && (
-              <button className="btn btn-primary" onClick={handleStartBridge}>
-                ▶️ 启动桥接
-              </button>
-            )}
-            {running && (
-              <button className="btn btn-ghost" onClick={handleStopBridge}>
-                ⏹️ 停止桥接
-              </button>
-            )}
-          </div>
-          {wechatMsg && (
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{wechatMsg}</p>
-          )}
-          <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            扫码绑定使用 claude-to-im 的微信 iLink Bot。点击按钮后会打开浏览器显示二维码，用微信扫描即可。
-          </p>
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <Cable className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">微信桥接</h3>
         </div>
-      </div>
+
+        {/* Status */}
+        <div className="flex items-center gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${hasAccount ? 'bg-green-400 animate-pulse-glow' : 'bg-muted-foreground/40'}`} />
+            <span className="text-muted-foreground">微信</span>
+            <Badge variant={hasAccount ? 'default' : 'secondary'} className="h-5 text-[10px]">
+              {hasAccount ? '已绑定' : '未绑定'}
+            </Badge>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${running ? 'bg-green-400 animate-pulse-glow' : 'bg-muted-foreground/40'}`} />
+            <span className="text-muted-foreground">桥接</span>
+            <Badge variant={running ? 'default' : 'secondary'} className="h-5 text-[10px]">
+              {running ? '运行中' : '未启动'}
+            </Badge>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={handleWeChatLogin} disabled={loading}>
+            <QrCode className="w-4 h-4 mr-1.5" />
+            {hasAccount ? '重新扫码绑定' : '扫码绑定微信'}
+          </Button>
+          {configured && !running && (
+            <Button onClick={handleStartBridge}>
+              <Play className="w-4 h-4 mr-1.5" />
+              启动桥接
+            </Button>
+          )}
+          {running && (
+            <Button variant="outline" onClick={handleStopBridge}>
+              <Square className="w-4 h-4 mr-1.5" />
+              停止桥接
+            </Button>
+          )}
+        </div>
+        {wechatMsg && (
+          <p className="text-sm text-muted-foreground">{wechatMsg}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          扫码绑定使用 claude-to-im 的微信 iLink Bot。点击按钮后会打开浏览器显示二维码。
+        </p>
+      </Card>
 
       {/* Claude Code Hooks */}
-      <div className="card">
-        <h3 className="font-semibold mb-4">🪝 Claude Code Hooks</h3>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className={`status-dot ${hookStatus.installed ? 'running' : 'idle'}`} />
-            <span>状态: {hookStatus.installed ? '🟢 已配置' : '⚪ 未配置'}</span>
-          </div>
-          <div className="flex gap-2">
-            <button className="btn btn-primary" onClick={handleInstallHooks}>
-              {hookStatus.installed ? '🔄 重新配置' : '🔧 配置 Hooks'}
-            </button>
-            {hookStatus.installed && (
-              <button className="btn btn-ghost" onClick={handleRemoveHooks}>
-                移除 Hooks
-              </button>
-            )}
-          </div>
-          {hookMsg && (
-            <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>{hookMsg}</p>
-          )}
-          <div className="text-xs space-y-1" style={{ color: 'var(--color-text-muted)' }}>
-            <p>配置后会安装以下 Claude Code Hooks:</p>
-            <p>• <b>PreToolUse</b> — AskUserQuestion 转发到微信</p>
-            <p>• <b>PreToolUse</b> — 危险操作微信确认 (rm -rf, git push --force 等)</p>
-            <p>• <b>Stop</b> — Claude 完成后微信通知</p>
-          </div>
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <Wrench className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">Claude Code Hooks</h3>
         </div>
-      </div>
+
+        <div className="flex items-center gap-2 text-sm">
+          <div className={`w-2 h-2 rounded-full ${hookStatus.installed ? 'bg-green-400 animate-pulse-glow' : 'bg-muted-foreground/40'}`} />
+          <span className="text-muted-foreground">
+            {hookStatus.installed ? '已配置' : '未配置'}
+          </span>
+        </div>
+
+        <div className="flex gap-2">
+          <Button onClick={handleInstallHooks}>
+            {hookStatus.installed ? '重新配置' : '配置 Hooks'}
+          </Button>
+          {hookStatus.installed && (
+            <Button variant="outline" onClick={handleRemoveHooks}>
+              移除 Hooks
+            </Button>
+          )}
+        </div>
+        {hookMsg && (
+          <p className="text-sm text-muted-foreground">{hookMsg}</p>
+        )}
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>配置后会安装以下 Claude Code Hooks:</p>
+          <p>• PreToolUse — AskUserQuestion 转发到微信</p>
+          <p>• PreToolUse — 危险操作微信确认</p>
+          <p>• Stop — Claude 完成后微信通知</p>
+        </div>
+      </Card>
 
       {/* General Settings */}
-      <div className="card">
-        <h3 className="font-semibold mb-4">⚡ 通用设置</h3>
-        <div className="space-y-4">
-          <div>
-            <label className="text-sm font-medium block mb-1">项目目录</label>
-            <input
-              className="input"
-              value={settings.projectDir}
-              onChange={e => updateSetting('projectDir', e.target.value)}
-              placeholder="C:\Users\xxx\projects\Wechat"
-            />
-          </div>
+      <Card className="p-5 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <Monitor className="w-5 h-5 text-primary" />
+          <h3 className="font-semibold">通用设置</h3>
+        </div>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.autoStart}
-              onChange={e => updateSetting('autoStart', e.target.checked)}
-              className="w-4 h-4 rounded accent-blue-500" />
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium">项目目录</label>
+          <Input
+            value={settings.projectDir}
+            onChange={e => updateSetting('projectDir', e.target.value)}
+            placeholder="C:\Users\xxx\projects\Wechat"
+          />
+        </div>
+
+        <Separator />
+
+        <div className="space-y-3">
+          <label className="flex items-center justify-between cursor-pointer">
             <div>
               <p className="text-sm font-medium">开机自启动</p>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Windows 启动时自动运行</p>
+              <p className="text-xs text-muted-foreground">Windows 启动时自动运行</p>
             </div>
+            <Switch
+              checked={settings.autoStart}
+              onCheckedChange={v => updateSetting('autoStart', v)}
+            />
           </label>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.minimizeToTray}
-              onChange={e => updateSetting('minimizeToTray', e.target.checked)}
-              className="w-4 h-4 rounded accent-blue-500" />
+          <label className="flex items-center justify-between cursor-pointer">
             <div>
               <p className="text-sm font-medium">最小化到系统托盘</p>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>关闭窗口时隐藏到托盘</p>
+              <p className="text-xs text-muted-foreground">关闭窗口时隐藏到托盘</p>
             </div>
+            <Switch
+              checked={settings.minimizeToTray}
+              onCheckedChange={v => updateSetting('minimizeToTray', v)}
+            />
           </label>
 
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={settings.notifyOnComplete}
-              onChange={e => updateSetting('notifyOnComplete', e.target.checked)}
-              className="w-4 h-4 rounded accent-blue-500" />
+          <label className="flex items-center justify-between cursor-pointer">
             <div>
-              <p className="text-sm font-medium">完成后微信通知</p>
-              <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Claude Code 完成后发送微信通知</p>
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <Bell className="w-3.5 h-3.5" />
+                完成后微信通知
+              </p>
+              <p className="text-xs text-muted-foreground">Claude Code 完成后发送微信通知</p>
             </div>
+            <Switch
+              checked={settings.notifyOnComplete}
+              onCheckedChange={v => updateSetting('notifyOnComplete', v)}
+            />
           </label>
-
-          <div>
-            <label className="text-sm font-medium block mb-1">主题</label>
-            <select className="input" value={settings.theme}
-              onChange={e => updateSetting('theme', e.target.value as 'dark' | 'light' | 'system')}>
-              <option value="dark">深色</option>
-              <option value="light">浅色</option>
-              <option value="system">跟随系统</option>
-            </select>
-          </div>
         </div>
-      </div>
+      </Card>
     </div>
   );
 }

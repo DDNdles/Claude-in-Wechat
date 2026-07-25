@@ -1,36 +1,52 @@
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --color-bg: #0f172a;
-    --color-surface: #1e293b;
-    --color-border: #334155;
-    --color-text: #f1f5f9;
-    --color-text-muted: #94a3b8;
-    --color-primary: #3b82f6;
-    --color-success: #22c55e;
-    --color-warning: #f59e0b;
-    --color-error: #ef4444;
-    --color-running: #22c55e;
-    --color-idle: #94a3b8;
-    --color-completed: #8b5cf6;
-  }
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.96 0 0);
+    --card: oklch(0.17 0 0);
+    --card-foreground: oklch(0.96 0 0);
+    --popover: oklch(0.17 0 0);
+    --popover-foreground: oklch(0.96 0 0);
+    --primary: oklch(0.62 0.22 145);
+    --primary-foreground: oklch(0.99 0 0);
+    --secondary: oklch(0.22 0 0);
+    --secondary-foreground: oklch(0.96 0 0);
+    --muted: oklch(0.22 0 0);
+    --muted-foreground: oklch(0.55 0 0);
+    --accent: oklch(0.22 0 0);
+    --accent-foreground: oklch(0.96 0 0);
+    --destructive: oklch(0.58 0.22 22);
+    --destructive-foreground: oklch(0.99 0 0);
+    --border: oklch(0.27 0 0);
+    --input: oklch(0.27 0 0);
+    --ring: oklch(0.62 0.22 145);
+    --radius: 0.625rem;
 
-  .light {
-    --color-bg: #f8fafc;
-    --color-surface: #ffffff;
-    --color-border: #e2e8f0;
-    --color-text: #0f172a;
-    --color-text-muted: #64748b;
-    --color-primary: #2563eb;
-    --color-success: #16a34a;
-    --color-warning: #d97706;
-    --color-error: #dc2626;
-    --color-running: #16a34a;
-    --color-idle: #94a3b8;
-    --color-completed: #7c3aed;
+    --chart-1: oklch(0.62 0.22 145);
+    --chart-2: oklch(0.65 0.18 265);
+    --chart-3: oklch(0.68 0.15 55);
+    --chart-4: oklch(0.60 0.20 330);
+    --chart-5: oklch(0.55 0.18 185);
+
+    --sidebar: oklch(0.17 0 0);
+    --sidebar-foreground: oklch(0.96 0 0);
+    --sidebar-primary: oklch(0.62 0.22 145);
+    --sidebar-primary-foreground: oklch(0.99 0 0);
+    --sidebar-accent: oklch(0.22 0 0);
+    --sidebar-accent-foreground: oklch(0.96 0 0);
+    --sidebar-border: oklch(0.27 0 0);
+    --sidebar-ring: oklch(0.62 0.22 145);
+
+    --color-running: oklch(0.65 0.22 145);
+    --color-idle: oklch(0.55 0 0);
+    --color-completed: oklch(0.60 0.18 280);
+    --color-error: oklch(0.58 0.22 22);
   }
 
   * {
@@ -40,9 +56,9 @@
   }
 
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-    background-color: var(--color-bg);
-    color: var(--color-text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
     overflow: hidden;
     -webkit-app-region: no-drag;
   }
@@ -52,108 +68,9 @@
     display: flex;
     flex-direction: column;
   }
-}
 
-@layer components {
-  .card {
-    @apply rounded-xl border p-4 transition-all duration-200;
-    background-color: var(--color-surface);
-    border-color: var(--color-border);
-  }
-
-  .card:hover {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.1);
-  }
-
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 cursor-pointer;
-    @apply disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-
-  .btn-primary {
-    @apply text-white;
-    background-color: var(--color-primary);
-  }
-
-  .btn-primary:hover:not(:disabled) {
-    filter: brightness(1.1);
-  }
-
-  .btn-ghost {
-    background: transparent;
-    color: var(--color-text-muted);
-  }
-
-  .btn-ghost:hover:not(:disabled) {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: var(--color-text);
-  }
-
-  .btn-danger {
-    @apply text-white;
-    background-color: var(--color-error);
-  }
-
-  .input {
-    @apply w-full px-3 py-2 rounded-lg border outline-none transition-colors;
-    background-color: var(--color-bg);
-    border-color: var(--color-border);
-    color: var(--color-text);
-  }
-
-  .input:focus {
-    border-color: var(--color-primary);
-  }
-
-  .sidebar-link {
-    @apply flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-all duration-200;
-    color: var(--color-text-muted);
-  }
-
-  .sidebar-link:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: var(--color-text);
-  }
-
-  .sidebar-link.active {
-    background-color: rgba(59, 130, 246, 0.15);
-    color: var(--color-primary);
-  }
-
-  .progress-bar-bg {
-    @apply w-full h-2 rounded-full overflow-hidden;
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-
-  .progress-bar-fill {
-    @apply h-full rounded-full transition-all duration-1000 ease-out;
-    background: linear-gradient(90deg, var(--color-primary), var(--color-success));
-  }
-
-  .progress-bar-fill.running {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-
-  .status-dot {
-    @apply w-2.5 h-2.5 rounded-full inline-block;
-  }
-
-  .status-dot.running {
-    background-color: var(--color-running);
-    animation: pulse-glow 1.5s ease-in-out infinite;
-  }
-
-  .status-dot.idle {
-    background-color: var(--color-idle);
-  }
-
-  .status-dot.completed {
-    background-color: var(--color-completed);
-  }
-
-  .status-dot.error {
-    background-color: var(--color-error);
+  html {
+    color-scheme: dark;
   }
 }
 
@@ -175,16 +92,16 @@
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: oklch(1 0 0 / 0.1);
     border-radius: 3px;
   }
 
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: oklch(1 0 0 / 0.2);
   }
 }
 
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  50% { opacity: 0.45; }
 }

@@ -1,9 +1,10 @@
 /**
- * Claude in WeChat v0.4.1 — Electron main process.
+ * Claude in WeChat v0.5.0 — Electron main process.
  *
  * - Single instance lock
  * - BrowserWindow with tray icon
  * - Auto-start management
+ * - Auto-update via electron-updater (GitHub Releases)
  * - IPC handler registration
  * - WeChat relay service
  * - Window close → minimize-to-tray
@@ -15,6 +16,7 @@ import {
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { autoUpdater } from 'electron-updater';
 import * as logger from './utils/logger';
 import { ensureDirs } from './utils/paths';
 import { isWindows } from './utils/platform';
@@ -199,6 +201,12 @@ async function onAppReady(): Promise<void> {
 
   // 6. Load content
   await loadWindowContent(mainWindow);
+
+  // 7. Check for updates (production only)
+  if (!IS_DEV) {
+    autoUpdater.checkForUpdatesAndNotify();
+    logger.info("Auto-update check initiated");
+  }
 }
 
 // ── Single instance ────────────────────────────────────────────────
