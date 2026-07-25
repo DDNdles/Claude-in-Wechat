@@ -93,35 +93,65 @@ export function registerSettingsHandlers(): void {
    * Attempts to launch the external wechat-login tool or guide the user
    * through the OAuth / qrcode-terminal login process.
    */
-  ipcMain.handle(IPC_CHANNELS.SETUP_WECHAT, async (): Promise<IpcResponse<{ qrCodeUrl?: string }>> => {
+  ipcMain.handle(IPC_CHANNELS.SETUP_WECHAT, async (): Promise<IpcResponse<{ connected: boolean; accountId?: string; userId?: string; needLogin?: boolean }>> => {
     try {
-      // Try to run `claude-to-im setup-wechat` if available
-      const { execSync } = await import('node:child_process');
-
-      try {
-        const result = execSync('npx claude-to-im setup-wechat --json', {
-          encoding: 'utf-8',
-          timeout: 30_000,
-          windowsHide: true,
-        });
-        const parsed = JSON.parse(result);
-        logger.info('WeChat setup completed via claude-to-im');
-        return respond(true, { qrCodeUrl: parsed.qrCodeUrl ?? parsed.qr_code_url });
-      } catch (execErr) {
-        logger.warn('claude-to-im setup-wechat not available, falling back to manual guide', execErr);
-
-        // Fallback: open the weixin-accounts file's directory so the user
-        // can inspect or manually configure the account.
-        const { WEIXIN_ACCOUNTS_FILE } = await import('../utils/paths');
-        const accountsDir = path.dirname(WEIXIN_ACCOUNTS_FILE);
-
-        if (fs.existsSync(WEIXIN_ACCOUNTS_FILE)) {
-          // Accounts already exist — notify renderer
-          return respond(true, { qrCodeUrl: undefined });
+      // Step 1: Check if already connected
+      const { WEIXIN_ACCOUNTS_FILE } = await import('../utils/paths');
+      if (fs.existsSync(WEIXIN_ACCOUNTS_FILE)) {
+        try {
+          const accounts = JSON.parse(fs.readFileSync(WEIXIN_ACCOUNTS_FILE, 'utf-8'));
+          if (Array.isArray(accounts) && accounts.length > 0) {
+            const acct = accounts[0];
+            logger.info('WeChat account already connected', { accountId: acct.accountId });
+            return respond(true, {
+              connected: true,
+              accountId: acct.accountId,
+              userId: acct.userId,
+            });
+          }
+        } catch (parseErr) {
+          logger.warn('Failed to parse weixin-accounts.json', parseErr);
         }
-
-        return respond(false, undefined, 'WeChat setup requires claude-to-im CLI. Run: npx claude-to-im setup-wechat');
       }
+
+      // Step 2: Try to launch QR login via claude-to-im skill
+      const skillDir = path.join(require('node:os').homedir(), '.claude', 'skills', 'claude-to-im');
+      if (fs.existsSync(path.join(skillDir, 'package.json'))) {
+        const { execSync } = await import('node:child_process');
+        try {
+          logger.info('Launching WeChat QR login from claude-to-im...');
+          execSync('npm run weixin:login', {
+            cwd: skillDir,
+            encoding: 'utf-8',
+            timeout: 60_000,
+            windowsHide: false, // Show the terminal so user can see QR
+            stdio: 'pipe',
+          });
+          // Wait briefly for the login file to be written
+          await new Promise(r => setTimeout(r, 2000));
+          // Re-check for accounts
+          if (fs.existsSync(WEIXIN_ACCOUNTS_FILE)) {
+            const accounts = JSON.parse(fs.readFileSync(WEIXIN_ACCOUNTS_FILE, 'utf-8'));
+            if (Array.isArray(accounts) && accounts.length > 0) {
+              return respond(true, {
+                connected: true,
+                accountId: accounts[0].accountId,
+                userId: accounts[0].userId,
+              });
+            }
+          }
+          return respond(true, { connected: false, needLogin: true });
+        } catch (execErr: any) {
+          logger.warn('QR login launch failed', execErr.message);
+          return respond(true, { connected: false, needLogin: true });
+        }
+      }
+
+      // Step 3: No skill found, guide user
+      return respond(true, {
+        connected: false,
+        needLogin: true,
+      });
     } catch (err) {
       logger.error('WeChat setup failed', err);
       return respond(false, undefined, 'WeChat setup failed. Check the logs for details.');

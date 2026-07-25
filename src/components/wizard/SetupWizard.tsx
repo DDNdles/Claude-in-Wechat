@@ -13,7 +13,8 @@ const STEPS = [
 
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState(0);
-  const [wechatStatus, setWechatStatus] = useState<'pending' | 'checking' | 'connected' | 'failed'>('pending');
+  const [wechatStatus, setWechatStatus] = useState<'pending' | 'checking' | 'connected' | 'needLogin' | 'failed'>('pending');
+  const [wechatInfo, setWechatInfo] = useState('');
   const [claudeStatus, setClaudeStatus] = useState<'pending' | 'checking' | 'ok' | 'failed'>('pending');
 
   const checkWeChat = async () => {
@@ -21,11 +22,25 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     try {
       if (window.electronAPI?.setupWechat) {
         const resp = await window.electronAPI.setupWechat();
-        setWechatStatus(resp.success ? 'connected' : 'failed');
+        if (resp.success && resp.data) {
+          const data = resp.data as any;
+          if (data.connected) {
+            setWechatStatus('connected');
+            setWechatInfo(`账户: ${data.accountId || '已绑定'}`);
+          } else if (data.needLogin) {
+            setWechatStatus('needLogin');
+            setWechatInfo('请在浏览器中扫描二维码完成微信绑定');
+          } else {
+            setWechatStatus('failed');
+          }
+        } else {
+          setWechatStatus('failed');
+        }
       } else {
-        // Mock success
-        await new Promise(r => setTimeout(r, 1500));
+        // Non-Electron: check localStorage or mock
+        await new Promise(r => setTimeout(r, 800));
         setWechatStatus('connected');
+        setWechatInfo('账户: 已绑定 (开发模式)');
       }
     } catch {
       setWechatStatus('failed');
@@ -87,7 +102,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="py-6">
             <h2 className="text-xl font-bold mb-4">🔗 绑定微信</h2>
             <p className="mb-4 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-              需要使用微信 iLink Bot 来收发消息。请确保已在 claude-to-im 中完成微信扫码绑定。
+              使用微信 iLink Bot 收发消息、接收进度通知和决策请求。
             </p>
             <div className="space-y-3">
               <button
@@ -95,16 +110,34 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 onClick={checkWeChat}
                 disabled={wechatStatus === 'checking'}
               >
-                {wechatStatus === 'checking' ? '检测中...' : '检测微信连接'}
+                {wechatStatus === 'checking' ? '⏳ 检测中...' :
+                 wechatStatus === 'connected' ? '🔄 重新检测' :
+                 wechatStatus === 'needLogin' ? '🔄 重试绑定' :
+                 '🔍 检测微信连接'}
               </button>
               {wechatStatus === 'connected' && (
-                <p className="text-green-400 text-sm">✅ 微信连接正常！</p>
+                <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30">
+                  <p className="text-green-400 text-sm font-medium">✅ 微信已连接</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{wechatInfo}</p>
+                  <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                    现在可以在微信上使用 /list、/new、/check 等命令了
+                  </p>
+                </div>
+              )}
+              {wechatStatus === 'needLogin' && (
+                <div className="p-3 rounded-lg bg-yellow-500/10 border border-yellow-500/30">
+                  <p className="text-yellow-400 text-sm font-medium">⚠️ 需要微信扫码</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>{wechatInfo}</p>
+                  <p className="text-xs mt-2" style={{ color: 'var(--color-text-muted)' }}>
+                    系统将自动打开浏览器显示二维码，用微信扫描即可完成绑定
+                  </p>
+                </div>
               )}
               {wechatStatus === 'failed' && (
-                <div>
-                  <p className="text-red-400 text-sm mb-2">❌ 未检测到微信连接</p>
-                  <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
-                    请先在 Claude Code 中运行 /claude-to-im setup，选择 weixin 渠道完成扫码绑定。
+                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                  <p className="text-red-400 text-sm font-medium">❌ 连接失败</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
+                    请确保已安装 claude-to-im skill: /claude-to-im setup
                   </p>
                 </div>
               )}
