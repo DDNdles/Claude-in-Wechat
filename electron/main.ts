@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import * as logger from './utils/logger';
 import { ensureDirs } from './utils/paths';
 import { isWindows } from './utils/platform';
-import { registerAllHandlers } from './ipc/settings-handlers';
+import { registerAllIpcHandlers, unregisterAllIpcHandlers } from './ipc/index';
 import { createConfigService } from './services/config-service';
 import { AutoStarter } from './services/auto-starter';
 
@@ -252,7 +252,7 @@ async function onAppReady(): Promise<void> {
   ensureDirs();
 
   // ── Register all IPC handlers ───────────────────────────────────
-  registerAllHandlers();
+  registerAllIpcHandlers(mainWindow!);
 
   // ── Auto-start check ────────────────────────────────────────────
   const configService = createConfigService();

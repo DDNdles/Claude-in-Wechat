@@ -34,7 +34,7 @@ function getMainWindow(): BrowserWindow | null {
 
 // ── Settings handlers ────────────────────────────────────────────────
 
-function registerSettingsHandlers(): void {
+export function registerSettingsHandlers(): void {
   const configService = getConfigService();
 
   /**
@@ -211,7 +211,7 @@ echo "{\\"event\\":\\"session_stop\\",\\"sessionId\\":\\"$SESSION_ID\\",\\"proje
 
 // ── App-level handlers ───────────────────────────────────────────────
 
-function registerAppHandlers(): void {
+export function registerAppHandlers(): void {
   const pkgPath = path.join(
     app.isPackaged ? path.dirname(app.getAppPath()) : path.resolve(__dirname, '..', '..'),
     'package.json',
