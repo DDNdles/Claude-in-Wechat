@@ -14,20 +14,36 @@ function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showSetup, setShowSetup] = useState(false);
+  const [initialized, setInitialized] = useState(false);
 
   const { projects, loadProjects } = useProjectStore();
   const { hasAccount, running, refreshStatus } = useRelayStore();
   const { settings, loadSettings } = useSettingsStore();
 
   useEffect(() => {
-    loadProjects();
-    loadSettings();
-    refreshStatus();
+    async function init() {
+      await loadProjects();
+      await loadSettings();
+      await refreshStatus();
+      setInitialized(true);
+    }
+    init();
+  }, []);
 
-    if (!settings.wechatEnabled) {
+  // v0.4: Start auto-refresh polling
+  useEffect(() => {
+    useProjectStore.getState().startPolling();
+    return () => {
+      useProjectStore.getState().stopPolling();
+    };
+  }, []);
+
+  // Show setup wizard only after settings have loaded
+  useEffect(() => {
+    if (initialized && !settings.wechatEnabled) {
       setShowSetup(true);
     }
-  }, []);
+  }, [initialized, settings.wechatEnabled]);
 
   const handleProjectClick = useCallback((projectId: string) => {
     setSelectedProjectId(projectId);
@@ -52,7 +68,7 @@ function App() {
         <h1 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
           🔷 Claude in WeChat
         </h1>
-        <p className="text-xs text-gray-500 mt-1">v0.3.0</p>
+        <p className="text-xs text-gray-500 mt-1">v0.4.0</p>
       </div>
       <nav className="px-2 space-y-1">
         <button
@@ -110,7 +126,7 @@ function App() {
           <span className="text-gray-600">|</span>
           <span>项目: {projects.length}</span>
           <span className="text-gray-600">|</span>
-          <span className="text-gray-500">v0.3.0</span>
+          <span className="text-gray-500">v0.4.0</span>
         </div>
       }
     >

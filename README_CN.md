@@ -1,4 +1,4 @@
-# Claude in WeChat v0.2.0
+# Claude in WeChat v0.4.0
 
 > 🔷 轻量化可接入微信的 Claude Code 远程项目管理桌面应用
 
@@ -57,7 +57,7 @@
 从 [GitHub Releases](https://github.com/YOUR_USER/Claude-in-Wechat/releases) 下载最新安装包:
 
 ```
-Claude-in-Wechat-Setup-0.2.0.exe
+Claude-in-Wechat-Setup-0.4.0.exe
 ```
 
 或从源码构建:

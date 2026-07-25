@@ -1,6 +1,6 @@
 import { useProjectStore } from '../../stores/projectStore';
 import ProjectCard from './ProjectCard';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ProjectListProps {
   onProjectClick: (projectId: string) => void;

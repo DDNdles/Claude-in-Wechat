@@ -4,6 +4,7 @@ interface BridgeState {
   running: boolean;
   hasAccount: boolean;
   configured: boolean;
+  polling: boolean;
   pid: number | null;
   loading: boolean;
   error: string | null;
@@ -14,10 +15,11 @@ interface BridgeState {
   stopBridge: () => Promise<{ success: boolean; message: string }>;
 }
 
-export const useRelayStore = create<BridgeState>((set) => ({
+export const useRelayStore = create<BridgeState>((set, get) => ({
   running: false,
   hasAccount: false,
   configured: false,
+  polling: false,
   pid: null,
   loading: false,
   error: null,
@@ -43,8 +45,8 @@ export const useRelayStore = create<BridgeState>((set) => ({
     if (!api) return { success: false, message: 'Electron API 不可用' };
     const resp = await api.wechatLogin();
     if (resp.success && resp.data) {
-      // Refresh status after login
-      set(s => { s.refreshStatus(); return {}; });
+      // FIXED: await refreshStatus after login completes, NOT inside synchronous set()
+      await get().refreshStatus();
       return resp.data;
     }
     return { success: false, message: resp.error || '登录失败' };
@@ -55,7 +57,8 @@ export const useRelayStore = create<BridgeState>((set) => ({
     if (!api) return { success: false, message: 'Electron API 不可用' };
     const resp = await api.wechatStartBridge();
     if (resp.success && resp.data) {
-      set(s => { s.refreshStatus(); return {}; });
+      // FIXED: await refreshStatus after bridge starts
+      await get().refreshStatus();
       return resp.data;
     }
     return { success: false, message: resp.error || '启动失败' };
@@ -66,7 +69,8 @@ export const useRelayStore = create<BridgeState>((set) => ({
     if (!api) return { success: false, message: 'Electron API 不可用' };
     const resp = await api.wechatStopBridge();
     if (resp.success && resp.data) {
-      set(s => { s.refreshStatus(); return {}; });
+      // FIXED: await refreshStatus after bridge stops
+      await get().refreshStatus();
       return resp.data;
     }
     return { success: false, message: resp.error || '停止失败' };

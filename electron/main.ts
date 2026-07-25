@@ -1,10 +1,11 @@
 /**
- * Claude in WeChat v0.3 — Electron main process.
+ * Claude in WeChat v0.4 — Electron main process.
  *
  * - Single instance lock
  * - BrowserWindow with tray icon
  * - Auto-start management
  * - IPC handler registration
+ * - WeChat relay service (NEW v0.4)
  * - Window close → minimize-to-tray
  */
 
@@ -20,6 +21,7 @@ import { isWindows } from './utils/platform';
 import { registerAllIpcHandlers } from './ipc/index';
 import { createConfigService } from './services/config-service';
 import { AutoStarter } from './services/auto-starter';
+import { start as startRelay, stop as stopRelay, setMainWindow } from './services/relay-service';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -143,6 +145,7 @@ async function loadWindowContent(win: BrowserWindow): Promise<void> {
 
 function quitApp(): void {
   isQuitting = true;
+  try { stopRelay(); } catch { /* cleanup */ }
   if (tray) { tray.destroy(); tray = null; }
   if (mainWindow) { mainWindow.destroy(); mainWindow = null; }
   app.quit();
@@ -163,6 +166,16 @@ async function onAppReady(): Promise<void> {
 
   mainWindow = createMainWindow();
   tray = createTray();
+
+  // v0.4: Start relay service and set up for IPC
+  setMainWindow(mainWindow);
+  try {
+    startRelay();
+    logger.info('WeChat relay service auto-started');
+  } catch (err) {
+    logger.warn('Could not auto-start relay service', err);
+  }
+
   await loadWindowContent(mainWindow);
 }
 
@@ -179,9 +192,17 @@ if (!gotTheLock) {
     if (mainWindow === null) { mainWindow = createMainWindow(); loadWindowContent(mainWindow); }
     else showMainWindow();
   });
-  app.on('before-quit', () => { isQuitting = true; });
+  app.on('before-quit', () => {
+    isQuitting = true;
+    try { stopRelay(); } catch { /* cleanup */ }
+    if (tray) { tray.destroy(); tray = null; }
+  });
   if (isWindows) {
-    (app as any).on('session-end', () => { isQuitting = true; if (tray) { tray.destroy(); tray = null; } });
+    (app as any).on('session-end', () => {
+      isQuitting = true;
+      try { stopRelay(); } catch { /* cleanup */ }
+      if (tray) { tray.destroy(); tray = null; }
+    });
   }
   powerMonitor.on('suspend', () => logger.info('System suspending'));
   powerMonitor.on('resume', () => logger.info('System resuming'));

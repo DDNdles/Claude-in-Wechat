@@ -1,5 +1,5 @@
 /**
- * Claude-in-WeChat v0.3 — Preload script
+ * Claude-in-WeChat v0.4 — Preload script
  * Clean, typed IPC bridge. No mock data.
  */
 
@@ -52,7 +52,7 @@ const electronAPI = {
   wechatAccount: (): Promise<IpcResponse<{ accountId: string; userId: string; name?: string } | null>> =>
     ipcRenderer.invoke('wechat:account'),
 
-  wechatStatus: (): Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; pid: number | null }>> =>
+  wechatStatus: (): Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; polling: boolean; pid: number | null }>> =>
     ipcRenderer.invoke('wechat:status'),
 
   wechatStartBridge: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
@@ -76,6 +76,22 @@ const electronAPI = {
 
   hooksStatus: (): Promise<IpcResponse<{ installed: boolean; hooks: unknown }>> =>
     ipcRenderer.invoke('hooks:status'),
+
+  // ═══════════════════════════════════════════════════════════════
+  // Relay (NEW v0.4)
+  // ═══════════════════════════════════════════════════════════════
+
+  relayStart: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('relay:start'),
+
+  relayStop: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('relay:stop'),
+
+  relayStatus: (): Promise<IpcResponse<{ running: boolean; polling: boolean; configured: boolean; messagesToday: number; pendingDecisions: number }>> =>
+    ipcRenderer.invoke('relay:status'),
+
+  relaySendMessage: (text: string): Promise<IpcResponse<{ success: boolean; message: string }>> =>
+    ipcRenderer.invoke('relay:send-message', text),
 
   // ═══════════════════════════════════════════════════════════════
   // Settings

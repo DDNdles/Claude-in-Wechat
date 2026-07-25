@@ -1,6 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// WeChat Bridge Service v0.3
-// Wraps claude-to-im daemon and weixin-global-integration hooks
+// WeChat Bridge Service v0.4
+// Integrates claude-to-im skill + our own direct relay service.
+// Provides unified API for: QR login, bridge management, status.
 // ═══════════════════════════════════════════════════════════════
 
 import { execSync, spawn } from 'node:child_process';
@@ -8,20 +9,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { info, warn, error, debug } from '../utils/logger';
+import { isConfigured as directIsConfigured, readAccounts, getActiveAccount, sendMessage } from './wechat-sender';
+import { start as startRelay, stop as stopRelay, isRunning as isRelayRunning, getStatus as getRelayStatus } from './relay-service';
 
 const HOME = os.homedir();
 
 // ── Paths ─────────────────────────────────────────────────────────
 
 const SKILL_DIR = path.join(HOME, '.claude', 'skills', 'claude-to-im');
-const WEIXIN_GLOBAL_DIR = path.join(HOME, '.claude', 'skills', 'weixin-global-integration');
 const DATA_DIR = path.join(HOME, '.claude-to-im', 'data');
 const ACCOUNTS_FILE = path.join(DATA_DIR, 'weixin-accounts.json');
 const CONFIG_FILE = path.join(HOME, '.claude-to-im', 'config.env');
-const RUNTIME_DIR = path.join(HOME, '.claude-to-im', 'runtime');
 const LOG_DIR = path.join(HOME, '.claude-to-im', 'logs');
 const BRIDGE_LOG = path.join(LOG_DIR, 'bridge.log');
-const STATUS_FILE = path.join(RUNTIME_DIR, 'status.json');
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -32,28 +32,30 @@ export interface WeChatAccount {
   token: string;
   name?: string;
   enabled?: boolean;
-  lastLoginAt?: string;
+  lastLoginAt: string | null;
 }
 
 export interface BridgeStatus {
   running: boolean;
   pid: number | null;
+  polling: boolean;
   channels: string[];
   startedAt: string | null;
   sessions: number;
   messagesToday: number;
+  pendingDecisions: number;
 }
 
 // ── Public API ────────────────────────────────────────────────────
 
-/** Check if claude-to-im is installed and configured */
+/** Check if claude-to-im is installed */
 export function isInstalled(): boolean {
   return fs.existsSync(SKILL_DIR) && fs.existsSync(path.join(SKILL_DIR, 'package.json'));
 }
 
-/** Check if bridge is configured (config.env exists) */
+/** Check if bridge is configured (account exists) */
 export function isConfigured(): boolean {
-  return fs.existsSync(CONFIG_FILE);
+  return directIsConfigured() || fs.existsSync(ACCOUNTS_FILE);
 }
 
 /** Check if a WeChat account is linked */
@@ -67,6 +69,9 @@ export function hasWeChatAccount(): boolean {
 
 /** Get the linked WeChat account */
 export function getWeChatAccount(): WeChatAccount | null {
+  const direct = getActiveAccount();
+  if (direct) return direct;
+
   try {
     if (!fs.existsSync(ACCOUNTS_FILE)) return null;
     const accounts: WeChatAccount[] = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
@@ -80,19 +85,15 @@ export function getWeChatAccount(): WeChatAccount | null {
 }
 
 /**
- * Launch WeChat QR login.
- * Runs `npm run weixin:login` in the claude-to-im skill directory.
- * Opens a browser window with QR code.
- * Returns true if login was initiated.
+ * Launch WeChat QR login via claude-to-im.
  */
 export function loginWeChat(): { success: boolean; message: string } {
   if (!isInstalled()) {
-    return { success: false, message: 'claude-to-im skill 未安装。请先安装: npx skills add op7418/Claude-to-IM-skill' };
+    return { success: false, message: 'claude-to-im skill 未安装。请在Claude Code中运行: /claude-to-im setup' };
   }
 
   try {
     info('Launching WeChat QR login...');
-    // Run the weixin:login script — it generates QR HTML and opens browser
     const result = execSync('npm run weixin:login', {
       cwd: SKILL_DIR,
       encoding: 'utf-8',
@@ -109,73 +110,68 @@ export function loginWeChat(): { success: boolean; message: string } {
   }
 }
 
-/** Get bridge daemon status */
+/** Get bridge status (from relay-service) */
 export function getBridgeStatus(): BridgeStatus {
-  try {
-    if (!fs.existsSync(STATUS_FILE)) {
-      return { running: false, pid: null, channels: [], startedAt: null, sessions: 0, messagesToday: 0 };
-    }
-    const raw = fs.readFileSync(STATUS_FILE, 'utf-8');
-    const status = JSON.parse(raw);
-    return {
-      running: status.running ?? (status.pid ? isPidAlive(status.pid) : false),
-      pid: status.pid ?? null,
-      channels: status.channels ?? [],
-      startedAt: status.startedAt ?? null,
-      sessions: status.sessions ?? 0,
-      messagesToday: status.messagesToday ?? 0,
-    };
-  } catch {
-    return { running: false, pid: null, channels: [], startedAt: null, sessions: 0, messagesToday: 0 };
-  }
+  const relayStatus = getRelayStatus();
+  return {
+    running: relayStatus.running,
+    pid: null, // relay runs in-process
+    polling: relayStatus.polling,
+    channels: [],
+    startedAt: null,
+    sessions: 0,
+    messagesToday: relayStatus.messagesToday,
+    pendingDecisions: relayStatus.pendingDecisions,
+  };
 }
 
-/** Start the bridge daemon */
+/** Start the bridge (relay service) */
 export function startBridge(): { success: boolean; message: string } {
   if (!isConfigured()) {
-    return { success: false, message: '请先配置 claude-to-im。运行: /claude-to-im setup' };
+    return { success: false, message: '请先绑定微信账户。打开设置 → 扫码绑定微信。' };
   }
 
   try {
-    info('Starting claude-to-im bridge...');
-    // Try PowerShell supervisor on Windows, bash daemon.sh on Unix
-    if (process.platform === 'win32') {
-      const psScript = path.join(SKILL_DIR, 'scripts', 'supervisor-windows.ps1');
-      if (fs.existsSync(psScript)) {
-        execSync(`powershell -ExecutionPolicy Bypass -File "${psScript}" start`, {
-          encoding: 'utf-8', timeout: 30_000, windowsHide: true,
-        });
+    info('Starting relay service...');
+
+    // Try to start the external daemon too (it provides QR login and additional features)
+    if (isInstalled()) {
+      try {
+        if (process.platform === 'win32') {
+          const psScript = path.join(SKILL_DIR, 'scripts', 'supervisor-windows.ps1');
+          if (fs.existsSync(psScript)) {
+            execSync(`powershell -ExecutionPolicy Bypass -File "${psScript}" start 2>nul`, {
+              encoding: 'utf-8', timeout: 15_000, windowsHide: true,
+            });
+          }
+        }
+        const daemonPath = path.join(SKILL_DIR, 'dist', 'daemon.mjs');
+        if (fs.existsSync(daemonPath)) {
+          spawn('node', [daemonPath], {
+            cwd: SKILL_DIR, detached: true, stdio: 'ignore', windowsHide: true,
+          }).unref();
+        }
+        info('External daemon started');
+      } catch (daemonErr) {
+        warn('External daemon start failed (non-critical)', daemonErr);
       }
     }
-    // Fallback: use node directly (daemon starts in background)
-    const daemonPath = path.join(SKILL_DIR, 'dist', 'daemon.mjs');
-    if (fs.existsSync(daemonPath)) {
-      spawn('node', [daemonPath], {
-        cwd: SKILL_DIR,
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      }).unref();
-    }
-    return { success: true, message: '桥接服务已启动' };
+
+    // Start internal relay service
+    startRelay();
+
+    return { success: true, message: '✅ 桥接服务已启动\n\n轮询中... 在微信发送 /help 查看命令' };
   } catch (err: any) {
     error('Failed to start bridge', err);
     return { success: false, message: `启动失败: ${err.message}` };
   }
 }
 
-/** Stop the bridge daemon */
+/** Stop the bridge (relay service) */
 export function stopBridge(): { success: boolean; message: string } {
   try {
-    info('Stopping claude-to-im bridge...');
-    const status = getBridgeStatus();
-    if (status.pid) {
-      if (process.platform === 'win32') {
-        execSync(`taskkill /PID ${status.pid} /F 2>nul`, { stdio: 'ignore' });
-      } else {
-        process.kill(status.pid, 'SIGTERM');
-      }
-    }
+    info('Stopping bridge...');
+    stopRelay();
     return { success: true, message: '桥接服务已停止' };
   } catch (err: any) {
     return { success: false, message: `停止失败: ${err.message}` };
@@ -185,13 +181,18 @@ export function stopBridge(): { success: boolean; message: string } {
 /** Get recent bridge logs */
 export function getBridgeLogs(lines: number = 50): string {
   try {
-    if (!fs.existsSync(BRIDGE_LOG)) return '(暂无日志)';
+    if (!fs.existsSync(BRIDGE_LOG)) return '(暂无日志 — 查看 ~/.claude-in-wechat/logs/ 获取应用日志)';
     const content = fs.readFileSync(BRIDGE_LOG, 'utf-8');
     const allLines = content.split('\n').filter(l => l.trim());
     return allLines.slice(-lines).join('\n');
   } catch {
     return '(无法读取日志)';
   }
+}
+
+/** Send a message directly via WeChat (one-way, no daemon needed) */
+export async function sendMessageDirect(text: string): Promise<{ success: boolean; message: string }> {
+  return sendMessage(text);
 }
 
 // ── Internal ───────────────────────────────────────────────────────

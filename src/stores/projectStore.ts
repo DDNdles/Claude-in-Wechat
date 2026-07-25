@@ -5,6 +5,7 @@ interface ProjectStore {
   projects: Project[];
   loading: boolean;
   error: string | null;
+  _pollRef: ReturnType<typeof setInterval> | null;
 
   loadProjects: () => Promise<void>;
   createProject: (name: string) => Promise<IpcResponse<Project>>;
@@ -13,12 +14,15 @@ interface ProjectStore {
   openProject: (id: string) => Promise<IpcResponse<Project>>;
   getProject: (id: string) => Project | undefined;
   updateProject: (id: string, updates: Partial<Project>) => void;
+  startPolling: () => void;
+  stopPolling: () => void;
 }
 
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   projects: [],
   loading: false,
   error: null,
+  _pollRef: null,
 
   loadProjects: async () => {
     set({ loading: true, error: null });
@@ -80,6 +84,24 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       projects: s.projects.map(p => (p.id === id ? { ...p, ...updates } : p)),
     }));
   },
+
+  // v0.4: Auto-refresh polling every 5 seconds
+  startPolling: () => {
+    const existing = get()._pollRef;
+    if (existing) clearInterval(existing);
+    const id = setInterval(() => {
+      get().loadProjects();
+    }, 5000);
+    set({ _pollRef: id });
+  },
+
+  stopPolling: () => {
+    const existing = get()._pollRef;
+    if (existing) {
+      clearInterval(existing);
+      set({ _pollRef: null });
+    }
+  },
 }));
 
 // Extend Window interface for electronAPI
@@ -97,7 +119,7 @@ declare global {
       claudeOpenProjectDir: (projectId: string, cwd: string, projectName: string) => Promise<IpcResponse<{ success: boolean; message: string }>>;
       wechatLogin: () => Promise<IpcResponse<{ success: boolean; message: string }>>;
       wechatAccount: () => Promise<IpcResponse<{ accountId: string; userId: string; name?: string } | null>>;
-      wechatStatus: () => Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; pid: number | null }>>;
+      wechatStatus: () => Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; polling: boolean; pid: number | null }>>;
       wechatStartBridge: () => Promise<IpcResponse<{ success: boolean; message: string }>>;
       wechatStopBridge: () => Promise<IpcResponse<{ success: boolean; message: string }>>;
       wechatLogs: (lines?: number) => Promise<IpcResponse<{ logs: string }>>;

@@ -1,5 +1,53 @@
 # Changelog
 
+## v0.4.0 (2026-07-25)
+
+### 🚀 New Features
+- **WeChat Message Relay** — Real-time polling of WeChat messages via iLink Bot API, with cursor-based deduplication
+- **Command Handler** — Full support for `/list`, `/new`, `/open`, `/delete`, `/rename`, `/check`, `/token`, `/help` commands from WeChat
+- **WeChat Message Sender** — Direct iLink API integration for sending messages, with auto-splitting for long messages and context token management
+- **Hook Events Watcher** — Monitors hook-events.jsonl for AskUserQuestion events, session stops, and dangerous operation alerts
+- **Decision Forwarding** — Pending decision queue matches WeChat numeric replies to AskUserQuestion prompts
+
+### 🔧 Fixes
+- **WeChat Bridge** — Rewritten to use internal relay-service instead of solely depending on claude-to-im daemon
+- **RelayStore Zustand bug** — Fixed async function being called inside synchronous `set()` — now properly awaited with `get()`
+- **ProjectStore auto-refresh** — Added 5-second polling for real-time project status updates
+- **App startup** — Fixed settings loading race condition that always showed setup wizard
+- **ProjectCard** — Fixed API response type handling for claude terminal launcher
+- **IPC handlers** — Added relay control handlers (start/stop/status/send-message/pending-decisions)
+
+### 🔄 Changed
+- Main process now auto-starts the relay service on app launch and cleans up on quit
+- electron-builder.yml updated to include vendor hook scripts in packaged app
+- All version references updated from v0.3.0/v0.2.0 to v0.4.0
+- wechat-bridge.ts now delegates status/start/stop to relay-service internally
+
+### 📦 Architecture
+- **4 new services** in `electron/services/`: `relay-service.ts`, `command-handler.ts`, `wechat-sender.ts`, `hook-events-watcher.ts`
+- Direct iLink Bot API integration using `fetch()` — works without claude-to-im daemon running
+- Uses existing weixin-global-integration hooks for AskUserQuestion interception
+
+---
+
+## v0.3.0 (2026-07-25)
+
+### 🚀 New Features
+- **Full rewrite** — Real functionality, no mock data
+- **Project Manager** — Real filesystem CRUD at `~/projects/Wechat/` with JSON registry
+- **Claude Launcher** — Opens real terminal windows running Claude Code via `start` command
+- **WeChat Bridge** — Integration with claude-to-im daemon
+- **Hooks Manager** — Installs PreToolUse/Stop hooks from vendor/ or weixin-global-integration
+- **Settings Panel** — Full settings management with persistent storage
+- **Setup Wizard** — Guided first-run configuration
+
+### 🔧 Fixes
+- Fixed entry HTML resolution for dev/production modes
+- Fixed relay service auto-start in dev mode
+- Fixed Vite watch ignore patterns
+
+---
+
 ## v0.2.0 (2026-07-25)
 
 ### 🚀 New Features

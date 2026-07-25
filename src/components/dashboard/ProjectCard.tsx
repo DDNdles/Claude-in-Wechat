@@ -51,10 +51,10 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
 
     // Then open the real terminal
     const resp = await api.claudeOpenTerminal(project.id, project.path, project.name);
-    if (resp.success && resp.data?.success) {
-      setToast(`✅ ${resp.data.message}`);
+    if (resp.success) {
+      setToast(`✅ ${resp.data?.message || '已打开终端'}`);
     } else {
-      setToast(`❌ ${resp.data?.message || resp.error || '打开失败'}`);
+      setToast(`❌ ${resp.error || '打开失败'}`);
     }
     setTimeout(() => setToast(''), 4000);
   };
@@ -67,10 +67,10 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
     if (!api) { setToast('❌ Electron API 不可用'); return; }
 
     const resp = await api.claudeOpenProjectDir(project.id, project.path, project.name);
-    if (resp.success && resp.data?.success) {
-      setToast(`✅ ${resp.data.message}`);
+    if (resp.success) {
+      setToast(`✅ ${resp.data?.message || '已打开终端'}`);
     } else {
-      setToast(`❌ ${resp.data?.message || resp.error || '打开失败'}`);
+      setToast(`❌ ${resp.error || '打开失败'}`);
     }
     setTimeout(() => setToast(''), 4000);
   };
