@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import electron from 'vite-plugin-electron';
 import electronRenderer from 'vite-plugin-electron-renderer';
+import { notBundle } from 'vite-plugin-electron/plugin';
 import path from 'node:path';
 
 export default defineConfig({
@@ -11,19 +12,9 @@ export default defineConfig({
       {
         entry: 'electron/main.ts',
         vite: {
+          plugins: [notBundle()],
           build: {
             outDir: 'dist-electron',
-            rollupOptions: {
-              external: [
-                'electron',
-                'electron-store',
-                'electron-updater',
-                'builder-util-runtime',
-                'js-yaml',
-                'semver',
-                'lazy-val',
-              ],
-            },
           },
         },
       },
