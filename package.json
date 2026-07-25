@@ -1,45 +1,116 @@
 {
-  "name": "weixin-global-integration",
-  "version": "1.0.0",
-  "description": "Global WeChat integration for Claude Code — intercept tool calls, redirect questions, and track progress via WeChat",
-  "main": "lib/weixin-client.mjs",
+  "name": "claude-in-wechat",
+  "version": "0.2.0",
+  "description": "轻量化可接入微信的 Claude Code 远程管理桌面应用 — Desktop app bridging WeChat with local Claude Code for remote project management",
+  "author": "Claude in WeChat",
+  "license": "MIT",
+  "main": "dist-electron/main.js",
   "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:build": "npm run build && electron-builder",
+    "electron:build:win": "npm run build && electron-builder --win",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.0",
+    "zustand": "^4.5.4",
+    "recharts": "^2.12.7",
+    "lucide-react": "^0.441.0",
+    "clsx": "^2.1.1",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@types/node": "^22.5.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.5",
+    "eslint": "^9.9.1",
+    "postcss": "^8.4.44",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.3",
+    "vite-plugin-electron": "^0.28.7",
+    "vite-plugin-electron-renderer": "^0.14.6",
+    "vitest": "^2.0.5",
+    "wait-on": "^8.0.0"
+  },
   "engines": {
     "node": ">=20.0.0"
   },
-  "scripts": {
-    "install": "node install.js",
-    "daemon:start": "node daemon/progress-daemon.mjs start",
-    "daemon:stop": "node daemon/progress-daemon.mjs stop",
-    "daemon:status": "node daemon/progress-daemon.mjs status",
-    "progress": "node scripts/query-progress.mjs",
-    "send": "node scripts/send-weixin.mjs",
-    "ask": "node scripts/ask-weixin.mjs",
-    "query-progress": "node scripts/query-progress.mjs"
+  "build": {
+    "appId": "com.claude-in-wechat.app",
+    "productName": "Claude in WeChat",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "vendor/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vendor/",
+        "to": "vendor/"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Claude in WeChat",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "license": "LICENSE"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "DDNdles",
+      "repo": "Claude-in-Wechat"
+    }
   },
-  "files": [
-    "lib/",
-    "hooks/",
-    "scripts/",
-    "daemon/",
-    "config/",
-    "install.js",
-    "SKILL.md",
-    "README.md",
-    "README_CN.md"
-  ],
   "keywords": [
     "claude-code",
     "wechat",
     "weixin",
-    "hooks",
-    "integration",
-    "permission-gate"
+    "desktop-app",
+    "electron",
+    "react",
+    "ai",
+    "project-management",
+    "remote-control",
+    "bridge"
   ],
-  "author": "",
-  "license": "MIT",
   "repository": {
     "type": "git",
-    "url": ""
-  }
+    "url": "https://github.com/DDNdles/Claude-in-Wechat.git"
+  },
+  "homepage": "https://github.com/DDNdles/Claude-in-Wechat#readme"
 }

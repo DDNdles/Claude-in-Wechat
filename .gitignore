@@ -1,5 +1,38 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+dist-electron/
+release/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
 .env
+.env.local
+*.env
+
+# Logs
 *.log
+logs/
+
+# Runtime data
+.claude-to-im/
 runtime/
+
+# Test coverage
+coverage/
+
+# Electron builder
+builder-effective-config.yaml

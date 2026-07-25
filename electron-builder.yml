@@ -1,0 +1,46 @@
+appId: com.claude-in-wechat.app
+productName: "Claude in WeChat"
+copyright: "Copyright © 2024 Claude in WeChat"
+
+directories:
+  output: release
+  buildResources: assets
+
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - vendor/**/*
+
+extraResources:
+  - from: vendor/
+    to: vendor/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icon.ico
+  artifactName: "${productName}-Setup-${version}.${ext}"
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: "Claude in WeChat"
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+  installerHeaderIcon: assets/icon.ico
+  license: LICENSE
+  language: "2052"
+  displayLanguageSelector: false
+  multiLanguageInstaller: true
+
+publish:
+  provider: github
+  owner: DDNdles
+  repo: Claude-in-Wechat
