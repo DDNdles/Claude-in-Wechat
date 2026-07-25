@@ -1,5 +1,5 @@
 /**
- * Claude-in-WeChat v0.4 — Preload script
+ * Claude-in-WeChat v0.5.3 — Preload script
  * Clean, typed IPC bridge. No mock data.
  */
 
@@ -78,7 +78,7 @@ const electronAPI = {
     ipcRenderer.invoke('hooks:status'),
 
   // ═══════════════════════════════════════════════════════════════
-  // Relay (NEW v0.4)
+  // Relay
   // ═══════════════════════════════════════════════════════════════
 
   relayStart: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
@@ -122,6 +122,11 @@ const electronAPI = {
   },
 };
 
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+try {
+  contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+  console.log('[preload] electronAPI exposed successfully');
+} catch (err) {
+  console.error('[preload] Failed to expose electronAPI:', err);
+}
 
 export type ElectronAPI = typeof electronAPI;

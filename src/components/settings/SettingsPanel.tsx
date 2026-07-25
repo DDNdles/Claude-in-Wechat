@@ -247,6 +247,34 @@ export default function SettingsPanel() {
             />
           </label>
         </div>
+
+        <Separator />
+
+        {/* Theme */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium flex items-center gap-1.5">
+            <Sun className="w-3.5 h-3.5" />
+            主题
+          </p>
+          <div className="flex gap-1.5">
+            {([
+              { value: 'dark', label: '深色', icon: '🌙' },
+              { value: 'light', label: '浅色', icon: '☀️' },
+              { value: 'system', label: '系统', icon: '💻' },
+            ] as const).map(({ value, label, icon }) => (
+              <Button
+                key={value}
+                variant={settings.theme === value ? 'default' : 'outline'}
+                size="sm"
+                className="flex-1"
+                onClick={() => updateSetting('theme', value)}
+              >
+                <span className="mr-1">{icon}</span>
+                {label}
+              </Button>
+            ))}
+          </div>
+        </div>
       </Card>
     </div>
   );

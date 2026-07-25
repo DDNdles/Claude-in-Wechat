@@ -77,7 +77,7 @@ function createMainWindow(): BrowserWindow {
     show: false, frame: true, title: 'Claude in WeChat',
     backgroundColor: '#0f0f0f',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false, contextIsolation: true, sandbox: false, webSecurity: true,
     },
   });
