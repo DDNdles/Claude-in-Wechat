@@ -19,8 +19,8 @@ export function registerAllIpcHandlers(mainWindow: BrowserWindow): void {
   info('Registering all IPC handlers...');
 
   registerProjectHandlers();
-  registerSettingsHandlers(mainWindow);
-  registerAppHandlers(mainWindow);
+  registerSettingsHandlers();
+  registerAppHandlers();
   registerRelayHandlers(mainWindow);
   registerOrchestratorHandlers(mainWindow);
 

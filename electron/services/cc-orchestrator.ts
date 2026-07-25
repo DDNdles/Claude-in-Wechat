@@ -62,7 +62,7 @@ const TASK_UPDATE_RE = /"name"\s*:\s*"TaskUpdate"\s*[,}].*?"taskId"\s*:\s*"([^"]
 const STATUS_UPDATE_HINT = /status.*(?:completed|in.progress|pending)/i;
 
 /** Match progress indicators like "step 3 of 7" or "(3/7)" */
-const PROGRESS_RE = new RegExp('(?:step|步骤)\\s*(\\d+)\\s*(?:of\\\\s+|of|\\\\|/)\\s*(\\d+)', 'i');
+const PROGRESS_RE = /(?:step|步骤)\s*(\d+)\s*(?:of\s*|[\/\\])\s*(\d+)/i;
 const PROGRESS_PAREN_RE = /\((\d+)\s*\/\s*(\d+)\)/;
 
 /** Match markdown task checkboxes */

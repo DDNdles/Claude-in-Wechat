@@ -36,6 +36,11 @@ export default defineConfig({
     ]),
     electronRenderer(),
   ],
+  server: {
+    watch: {
+      ignored: ['**/release/**', '**/node_modules/**', '**/dist/**', '**/dist-electron/**'],
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { homedir } from 'node:os';
 
 /**
@@ -47,7 +48,6 @@ export const HOOKS_DIR = path.join(APP_DATA_DIR, 'hooks');
 
 /** Ensure all required directories exist */
 export function ensureDirs(): void {
-  const fs = require('node:fs');
   for (const dir of [APP_DATA_DIR, PROJECTS_DIR, LOG_DIR, RUNTIME_DIR, HOOKS_DIR]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
