@@ -6,7 +6,9 @@
 import {
   listProjects, createProject, deleteProject, renameProject,
   openProject, getProject, getTokenUsage, getActiveProject, setActiveProject,
+  updateProjectStatus, isProjectRunning,
 } from './project-manager';
+import { killSession, hasSession, getSessionPid } from './claude-launcher';
 import { getProgressTracker } from './progress-tracker';
 import { info, debug, warn, error } from '../utils/logger';
 
@@ -124,11 +126,14 @@ export async function handleCommand(command: string, args: string[]): Promise<st
       case 'token':
         return handleToken(args.join(' '));
 
+      case 'stop':
+        return handleStop(args.join(' '));
+
       case 'help':
         return handleHelp();
 
       default:
-        return `未知命令: /${command}\n\n可用命令:\n/list 列出项目\n/new 项目名 创建项目\n/open 项目名 打开项目\n/delete 项目名 删除项目\n/rename 旧名 新名 重命名\n/check 项目名 查看进度\n/token 项目名 Token用量\n/help 帮助`;
+        return `未知命令: /${command}\n\n可用命令:\n/list 列出项目\n/new 项目名 创建项目\n/open 项目名 打开项目\n/stop 项目名 关闭项目\n/delete 项目名 删除项目\n/rename 旧名 新名 重命名\n/check 项目名 查看进度\n/token 项目名 Token用量\n/help 帮助`;
     }
   } catch (err: any) {
     error(`Command ${command} failed`, err);
@@ -212,6 +217,40 @@ function handleDelete(name: string): string {
   }
 
   return `✅ 已删除「${project.name}」\n项目文件夹已保留在磁盘上`;
+}
+
+function handleStop(name: string): string {
+  let project;
+  if (name && name.trim().length > 0) {
+    project = findProjectByName(name.trim());
+  } else {
+    const active = getActiveProject();
+    if (active.success && active.data) project = active.data;
+  }
+
+  if (!project) {
+    return name
+      ? `❌ 项目「${name.trim()}」不存在`
+      : '❌ 没有活跃项目。使用 /stop 项目名 关闭指定项目';
+  }
+
+  // Kill the Claude process if running
+  const pid = project.pid || getSessionPid(project.id);
+  if (pid && isProjectRunning(project.id)) {
+    killSession(project.id);
+    updateProjectStatus(project.id, 'idle', project.progress, project.tasks);
+    return `✅ 已关闭项目「${project.name}」（PID: ${pid}）`;
+  }
+
+  if (hasSession(project.id)) {
+    killSession(project.id);
+    updateProjectStatus(project.id, 'idle', project.progress, project.tasks);
+    return `✅ 已关闭项目「${project.name}」的终端会话`;
+  }
+
+  // Just mark as idle if no process to kill
+  updateProjectStatus(project.id, 'idle', project.progress, project.tasks);
+  return `✅ 项目「${project.name}」已标记为空闲（无运行中的进程）`;
 }
 
 function handleRename(args: string[]): string {
@@ -305,6 +344,7 @@ function handleHelp(): string {
     '/list — 列出所有项目及状态',
     '/new 项目名 — 创建新项目',
     '/open 项目名 — 打开并激活项目',
+    '/stop [项目名] — 关闭项目（终止Claude Code进程）',
     '/delete 项目名 — 删除项目',
     '/rename 旧名 新名 — 重命名项目',
     '/check [项目名] — 查看项目进度',
@@ -313,6 +353,5 @@ function handleHelp(): string {
     '',
     '直接发送文字 — 向活跃项目的Claude Code发送任务',
     '发送数字 — 回复决策提示',
-    '发送"查询进度" — 查看进度',
   ].join('\n');
 }

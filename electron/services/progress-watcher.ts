@@ -1,6 +1,7 @@
 /**
- * Progress Watcher — real-time progress from Claude session jsonl.
- * Scans the latest session jsonl, counts tool_use events as progress proxy.
+ * Progress Watcher — real-time progress + token usage from Claude session jsonl.
+ * Scans the latest session jsonl, counts tool_use events as progress proxy,
+ * and sums usage.input_tokens/usage.output_tokens for real-time token tracking.
  */
 
 import fs from 'node:fs';
@@ -15,6 +16,10 @@ export interface ProjectProgress {
   progress: number;
   toolUseCount: number;
   sessionActive: boolean;
+  /** Total input tokens this session */
+  inputTokens: number;
+  /** Total output tokens this session */
+  outputTokens: number;
 }
 
 const cache = new Map<string, ProjectProgress>();
@@ -25,7 +30,10 @@ function encodeCwd(cwd: string): string {
 }
 
 export function refreshProjectProgress(projectId: string, cwd: string): ProjectProgress {
-  const result: ProjectProgress = { progress: 0, toolUseCount: 0, sessionActive: false };
+  const result: ProjectProgress = {
+    progress: 0, toolUseCount: 0, sessionActive: false,
+    inputTokens: 0, outputTokens: 0,
+  };
 
   try {
     const encoded = encodeCwd(cwd);
@@ -40,17 +48,31 @@ export function refreshProjectProgress(projectId: string, cwd: string): ProjectP
     if (jsonls.length === 0) return result;
 
     const ageSec = (Date.now() - jsonls[0].mtime) / 1000;
-    result.sessionActive = ageSec < 300; // active = written in last 5 min
+    result.sessionActive = ageSec < 300;
 
     const filePath = path.join(dir, jsonls[0].name);
     const content = fs.readFileSync(filePath, 'utf-8');
     const lines = content.split('\n');
 
     let toolUses = 0;
+    let totalInput = 0;
+    let totalOutput = 0;
+
     for (const line of lines) {
+      if (line.length < 10) continue;
       if (line.includes('"type":"tool_use"')) toolUses++;
+      if (line.includes('"input_tokens"')) {
+        // Fast regex-less extraction of token numbers from usage JSON
+        const inputMatch = line.match(/"input_tokens":(\d+)/);
+        const outputMatch = line.match(/"output_tokens":(\d+)/);
+        if (inputMatch) totalInput += parseInt(inputMatch[1], 10);
+        if (outputMatch) totalOutput += parseInt(outputMatch[1], 10);
+      }
     }
+
     result.toolUseCount = toolUses;
+    result.inputTokens = totalInput;
+    result.outputTokens = totalOutput;
     result.progress = Math.min(95, Math.max(0, toolUses * 5));
 
     cache.set(projectId, result);
@@ -65,7 +87,6 @@ export function refreshProjectProgress(projectId: string, cwd: string): ProjectP
 export function getProjectProgress(projectId: string, cwd: string): ProjectProgress {
   const cached = cache.get(projectId);
   const lastTime = cacheTime.get(projectId) || 0;
-  // Refresh if no cache, or stale (> 3s) and session was active
   if (!cached || (cached.sessionActive && Date.now() - lastTime > 3000)) {
     return refreshProjectProgress(projectId, cwd);
   }

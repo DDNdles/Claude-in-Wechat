@@ -4,7 +4,7 @@ import TaskList from './TaskList';
 import { Card } from '@shared/components/ui/card';
 import { Button } from '@shared/components/ui/button';
 import { Separator } from '@shared/components/ui/separator';
-import { ArrowLeft, Play, Terminal, FolderOpen, Coins, Calendar, Zap, Smartphone, Monitor } from 'lucide-react';
+import { ArrowLeft, Play, FolderOpen, Coins, Calendar, Zap, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ProjectDetailProps {
@@ -57,14 +57,6 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
     }
   };
 
-  const handleTerminal = async () => {
-    const api = window.electronAPI;
-    if (!api) return;
-    const resp = await api.claudeOpenProjectDir(projectId, project.path, project.name);
-    if (resp.success) toast.success(resp.data?.message || '终端已打开');
-    else toast.error(resp.error || '打开失败');
-  };
-
   return (
     <div className="space-y-6 max-w-4xl">
       {/* Header */}
@@ -93,10 +85,6 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
           <Button onClick={handleStart}>
             <Play className="w-4 h-4" />
             {isRunning ? '调出窗口' : '启动 Claude'}
-          </Button>
-          <Button variant="outline" onClick={handleTerminal}>
-            <Terminal className="w-4 h-4" />
-            终端
           </Button>
         </div>
       </div>

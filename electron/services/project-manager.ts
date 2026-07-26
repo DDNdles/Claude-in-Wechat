@@ -130,16 +130,19 @@ export function listProjects(): Project[] {
       live.status = live.status === 'running' ? 'error' : live.status;
     }
 
-    // Real-time progress from session jsonl (for running/desktop projects)
+    // Real-time progress + tokens from session jsonl
     if (live.status === 'running' || live.launchMode === 'desktop') {
       try {
         const rtProgress = refreshProjectProgress(live.id, live.path);
         if (rtProgress.toolUseCount > 0) {
           live.progress = rtProgress.progress;
-          // If session is active but status is idle, mark as running
           if (rtProgress.sessionActive && live.status === 'idle') {
             live.status = 'running';
           }
+        }
+        // Update token counts in real time
+        if (rtProgress.inputTokens > 0 || rtProgress.outputTokens > 0) {
+          live.sessionTokens = rtProgress.inputTokens + rtProgress.outputTokens;
         }
       } catch { /* progress watcher shouldn't break list */ }
     }

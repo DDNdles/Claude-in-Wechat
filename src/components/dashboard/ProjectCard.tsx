@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from '@shared/components/ui/dialog';
 import { toast } from 'sonner';
-import { Play, Terminal, Trash2, Coins, Smartphone, Monitor } from 'lucide-react';
+import { Play, Trash2, Coins, Smartphone, Monitor } from 'lucide-react';
 
 interface ProjectCardProps {
   project: Project;
@@ -62,15 +62,6 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
       })(),
       { loading: '正在启动 Claude Code…', success: 'Claude Code 已启动', error: (err: Error) => `启动失败: ${err.message}` },
     );
-  };
-
-  const handleTerminal = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const api = window.electronAPI;
-    if (!api) { toast.error('Electron API 不可用'); return; }
-    const resp = await api.claudeOpenProjectDir(project.id, project.path, project.name);
-    if (resp.success) toast.success(resp.data?.message || '终端已打开');
-    else toast.error(resp.error || '打开失败');
   };
 
   const handleDelete = async () => {
@@ -141,9 +132,6 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
             <Button size="sm" className="flex-1 h-8" onClick={handleStart}>
               <Play className="w-3.5 h-3.5" />
               {isRunning ? '调出窗口' : '启动 Claude'}
-            </Button>
-            <Button variant="outline" size="sm" className="h-8" onClick={handleTerminal}>
-              <Terminal className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>
