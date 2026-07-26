@@ -4,8 +4,6 @@ import ProgressBar from './ProgressBar';
 import { useProjectStore } from '../../stores/projectStore';
 import { Card } from '@shared/components/ui/card';
 import { Button } from '@shared/components/ui/button';
-import { Badge } from '@shared/components/ui/badge';
-import { Separator } from '@shared/components/ui/separator';
 import {
   Dialog,
   DialogContent,
@@ -15,26 +13,19 @@ import {
   DialogTitle,
 } from '@shared/components/ui/dialog';
 import { toast } from 'sonner';
-import {
-  Play,
-  Terminal,
-  Trash2,
-  Clock,
-  Coins,
-  Folder,
-} from 'lucide-react';
+import { Play, Terminal, Trash2, Coins, Smartphone, Monitor } from 'lucide-react';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
 }
 
-const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
-  running: { label: '运行中', variant: 'default' },
-  idle: { label: '空闲', variant: 'secondary' },
-  completed: { label: '已完成', variant: 'outline' },
-  error: { label: '错误', variant: 'destructive' },
-  waiting: { label: '等待中', variant: 'secondary' },
+const STATUS: Record<string, { label: string; dotClass: string; textClass: string }> = {
+  running:   { label: '运行中', dotClass: 'glow-dot-running', textClass: 'text-[oklch(0.74_0.19_145)]' },
+  idle:      { label: '空闲',   dotClass: '',                  textClass: 'text-muted-foreground' },
+  completed: { label: '已完成', dotClass: '',                  textClass: 'text-[oklch(0.66_0.17_280)]' },
+  error:     { label: '错误',   dotClass: 'glow-dot-error',    textClass: 'text-destructive' },
+  waiting:   { label: '等待中', dotClass: '',                  textClass: 'text-[oklch(0.72_0.15_55)]' },
 };
 
 function formatTokens(n: number): string {
@@ -42,26 +33,26 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function timeAgo(isoString: string): string {
-  const diff = Date.now() - new Date(isoString).getTime();
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return '刚刚';
   if (mins < 60) return `${mins}分钟前`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}小时前`;
-  return `${Math.floor(hours / 24)}天前`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}小时前`;
+  return `${Math.floor(h / 24)}天前`;
 }
 
 export default function ProjectCard({ project, onClick }: ProjectCardProps) {
   const [showDelete, setShowDelete] = useState(false);
-  const statusConfig = STATUS_CONFIG[project.status] || STATUS_CONFIG.idle;
+  const s = STATUS[project.status] || STATUS.idle;
   const { deleteProject, openProject } = useProjectStore();
+  const isRunning = project.status === 'running';
 
-  const handleStartClaude = async (e: React.MouseEvent) => {
+  const handleStart = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const api = window.electronAPI;
     if (!api) { toast.error('Electron API 不可用'); return; }
-
     toast.promise(
       (async () => {
         await openProject(project.id);
@@ -69,15 +60,11 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
         if (!resp.success) throw new Error(resp.error || '启动失败');
         return resp;
       })(),
-      {
-        loading: '正在启动 Claude Code...',
-        success: () => 'Claude Code 已启动',
-        error: (err) => `启动失败: ${err.message}`,
-      },
+      { loading: '正在启动 Claude Code…', success: 'Claude Code 已启动', error: (err: Error) => `启动失败: ${err.message}` },
     );
   };
 
-  const handleOpenTerminal = async (e: React.MouseEvent) => {
+  const handleTerminal = async (e: React.MouseEvent) => {
     e.stopPropagation();
     const api = window.electronAPI;
     if (!api) { toast.error('Electron API 不可用'); return; }
@@ -96,30 +83,28 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
   return (
     <>
       <Card
-        className="glass-card glass-card-hover cursor-pointer group rounded-xl"
+        className="glass-card glass-hover cursor-pointer group rounded-2xl animate-float-in"
         onClick={onClick}
       >
-        <div className="p-4 space-y-3">
-          {/* Header */}
-          <div className="flex items-start justify-between">
+        <div className="p-5 space-y-4">
+          {/* Header: name + status */}
+          <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <Folder className="w-4 h-4 text-muted-foreground shrink-0" />
-                <h3 className="font-semibold text-sm truncate">{project.name}</h3>
-              </div>
-              <div className="flex items-center gap-2 mt-1.5">
-                <Badge variant={statusConfig.variant} className="h-5 px-1.5 text-[10px]">
-                  {statusConfig.label}
-                </Badge>
-                <span className="text-[11px] text-muted-foreground">
-                  {timeAgo(project.lastActiveAt)}
-                </span>
+              <h3 className="font-semibold text-[15px] truncate tracking-tight-title">{project.name}</h3>
+              <div className="flex items-center gap-2 mt-2">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'animate-pulse-glow' : ''} ${s.dotClass}`}
+                  style={{ backgroundColor: isRunning ? 'oklch(0.74 0.19 145)' : project.status === 'error' ? 'oklch(0.64 0.22 22)' : project.status === 'completed' ? 'oklch(0.66 0.17 280)' : 'oklch(0.6 0.01 250 / 0.6)' }}
+                />
+                <span className={`text-[11px] font-medium ${s.textClass}`}>{s.label}</span>
+                <span className="text-[11px] text-muted-foreground">·</span>
+                <span className="text-[11px] text-muted-foreground">{timeAgo(project.lastActiveAt)}</span>
               </div>
             </div>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
+              size="icon-sm"
+              className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive shrink-0"
               onClick={(e) => { e.stopPropagation(); setShowDelete(true); }}
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -127,48 +112,38 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
           </div>
 
           {/* Progress */}
-          <div className="space-y-1">
+          <div className="space-y-1.5">
             <ProgressBar progress={project.progress} status={project.status} />
-            {project.currentStep && project.totalSteps ? (
-              <p className="text-[11px] text-muted-foreground text-right">
-                步骤 {project.currentStep}/{project.totalSteps}
-              </p>
-            ) : null}
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+              <span className="tabular-nums">{project.progress}%</span>
+              {project.currentStep && project.totalSteps ? (
+                <span className="tabular-nums">步骤 {project.currentStep}/{project.totalSteps}</span>
+              ) : <span />}
+            </div>
           </div>
 
-          {/* Meta */}
+          {/* Meta row */}
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <Coins className="w-3 h-3" />
-              {formatTokens(project.sessionTokens)}
+              <span className="tabular-nums">{formatTokens(project.sessionTokens)}</span>
             </div>
             <div className="flex items-center gap-1">
-              <Clock className="w-3 h-3" />
-              {project.launchMode === 'wechat' ? '微信' : '桌面'}
+              {project.launchMode === 'wechat'
+                ? <Smartphone className="w-3 h-3" />
+                : <Monitor className="w-3 h-3" />}
+              <span>{project.launchMode === 'wechat' ? '微信' : '桌面'}</span>
             </div>
           </div>
-
-          <Separator />
 
           {/* Actions */}
-          <div className="flex gap-1.5">
-            <Button
-              variant="default"
-              size="sm"
-              className="flex-1 h-8 text-xs"
-              onClick={handleStartClaude}
-            >
-              <Play className="w-3 h-3 mr-1" />
-              启动
+          <div className="flex gap-2 pt-1">
+            <Button size="sm" className="flex-1 h-8" onClick={handleStart}>
+              <Play className="w-3.5 h-3.5" />
+              {isRunning ? '调出窗口' : '启动 Claude'}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={handleOpenTerminal}
-            >
-              <Terminal className="w-3 h-3 mr-1" />
-              终端
+            <Button variant="outline" size="sm" className="h-8" onClick={handleTerminal}>
+              <Terminal className="w-3.5 h-3.5" />
             </Button>
           </div>
         </div>

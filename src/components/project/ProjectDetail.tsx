@@ -4,16 +4,7 @@ import TaskList from './TaskList';
 import { Card } from '@shared/components/ui/card';
 import { Button } from '@shared/components/ui/button';
 import { Separator } from '@shared/components/ui/separator';
-import {
-  ArrowLeft,
-  Play,
-  Terminal,
-  FolderOpen,
-  Coins,
-  Calendar,
-  Zap,
-  DollarSign,
-} from 'lucide-react';
+import { ArrowLeft, Play, Terminal, FolderOpen, Coins, Calendar, Zap, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface ProjectDetailProps {
@@ -26,12 +17,12 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  running: { label: '运行中', className: 'text-green-400' },
-  idle: { label: '空闲', className: 'text-muted-foreground' },
-  completed: { label: '已完成', className: 'text-violet-400' },
-  error: { label: '错误', className: 'text-destructive' },
-  waiting: { label: '等待中', className: 'text-amber-400' },
+const STATUS: Record<string, { label: string; className: string; dotColor: string }> = {
+  running:   { label: '运行中', className: 'text-[oklch(0.74_0.19_145)]', dotColor: 'oklch(0.74 0.19 145)' },
+  idle:      { label: '空闲',   className: 'text-muted-foreground',        dotColor: 'oklch(0.6 0.01 250 / 0.6)' },
+  completed: { label: '已完成', className: 'text-[oklch(0.66_0.17_280)]', dotColor: 'oklch(0.66 0.17 280)' },
+  error:     { label: '错误',   className: 'text-destructive',             dotColor: 'oklch(0.64 0.22 22)' },
+  waiting:   { label: '等待中', className: 'text-[oklch(0.72_0.15_55)]',  dotColor: 'oklch(0.72 0.15 55)' },
 };
 
 export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps) {
@@ -41,42 +32,41 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
   if (!project) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-        <p className="text-lg mb-2">项目未找到</p>
+        <p className="text-lg mb-3">项目未找到</p>
         <Button variant="ghost" onClick={onBack}>
-          <ArrowLeft className="w-4 h-4 mr-1.5" />
+          <ArrowLeft className="w-4 h-4" />
           返回
         </Button>
       </div>
     );
   }
 
-  const statusInfo = STATUS_LABELS[project.status] || STATUS_LABELS.idle;
+  const s = STATUS[project.status] || STATUS.idle;
+  const isRunning = project.status === 'running';
 
-  const handleStartClaude = async () => {
+  const handleStart = async () => {
     const api = window.electronAPI;
-    if (api) {
-      await api.projectOpen(projectId);
-      const resp = await api.claudeOpenTerminal(projectId, project.path, project.name);
-      if (resp.success) {
-        updateProject(projectId, { status: 'running', lastActiveAt: new Date().toISOString() });
-        toast.success('Claude Code 已启动');
-      } else {
-        toast.error(resp.error || '启动失败');
-      }
+    if (!api) return;
+    await api.projectOpen(projectId);
+    const resp = await api.claudeOpenTerminal(projectId, project.path, project.name);
+    if (resp.success) {
+      updateProject(projectId, { status: 'running', lastActiveAt: new Date().toISOString() });
+      toast.success('Claude Code 已启动');
+    } else {
+      toast.error(resp.error || '启动失败');
     }
   };
 
-  const handleOpenTerminal = async () => {
+  const handleTerminal = async () => {
     const api = window.electronAPI;
-    if (api) {
-      const resp = await api.claudeOpenProjectDir(projectId, project.path, project.name);
-      if (resp.success) toast.success(resp.data?.message || '终端已打开');
-      else toast.error(resp.error || '打开失败');
-    }
+    if (!api) return;
+    const resp = await api.claudeOpenProjectDir(projectId, project.path, project.name);
+    if (resp.success) toast.success(resp.data?.message || '终端已打开');
+    else toast.error(resp.error || '打开失败');
   };
 
   return (
-    <div className="space-y-5 max-w-4xl">
+    <div className="space-y-6 max-w-4xl">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -84,25 +74,29 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               <FolderOpen className="w-5 h-5 text-muted-foreground" />
-              <h2 className="text-2xl font-bold tracking-tight">{project.name}</h2>
+              <h2 className="text-2xl font-bold tracking-tight-title">{project.name}</h2>
             </div>
-            <p className={`text-sm mt-0.5 ${statusInfo.className}`}>
-              {statusInfo.label} · {project.launchMode === 'wechat' ? '微信启动' : '桌面启动'}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'glow-dot-running animate-pulse-glow' : ''}`} style={{ backgroundColor: s.dotColor }} />
+              <span className={`text-sm ${s.className}`}>{s.label}</span>
+              <span className="text-sm text-muted-foreground">·</span>
+              <span className="text-sm text-muted-foreground flex items-center gap-1">
+                {project.launchMode === 'wechat' ? <Smartphone className="w-3 h-3" /> : <Monitor className="w-3 h-3" />}
+                {project.launchMode === 'wechat' ? '微信启动' : '桌面启动'}
+              </span>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {project.status !== 'running' && (
-            <Button onClick={handleStartClaude}>
-              <Play className="w-4 h-4 mr-1.5" />
-              启动 Claude
-            </Button>
-          )}
-          <Button variant="outline" onClick={handleOpenTerminal}>
-            <Terminal className="w-4 h-4 mr-1.5" />
-            打开终端
+          <Button onClick={handleStart}>
+            <Play className="w-4 h-4" />
+            {isRunning ? '调出窗口' : '启动 Claude'}
+          </Button>
+          <Button variant="outline" onClick={handleTerminal}>
+            <Terminal className="w-4 h-4" />
+            终端
           </Button>
         </div>
       </div>
@@ -111,83 +105,78 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
 
       {/* Progress + Tokens */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card className="glass-card p-4 space-y-3 rounded-xl">
+        <Card className="glass-card rounded-2xl p-5 space-y-4">
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <Zap className="w-4 h-4 text-primary" />
-            进度
+            <Zap className="w-4 h-4 text-primary" /> 进度
           </h3>
           <ProgressBar progress={project.progress} status={project.status} />
           <div className="flex items-center justify-between text-sm">
-            <span className="font-mono font-bold">{project.progress}%</span>
+            <span className="font-mono font-bold tabular-nums">{project.progress}%</span>
             {project.currentStep && project.totalSteps && (
-              <span className="text-muted-foreground">
-                步骤 {project.currentStep}/{project.totalSteps}
-              </span>
+              <span className="text-muted-foreground tabular-nums">步骤 {project.currentStep}/{project.totalSteps}</span>
             )}
           </div>
         </Card>
 
-        <Card className="glass-card p-4 space-y-3 rounded-xl">
+        <Card className="glass-card rounded-2xl p-5 space-y-4">
           <h3 className="text-sm font-semibold flex items-center gap-2">
-            <Coins className="w-4 h-4 text-primary" />
-            Token 使用
+            <Coins className="w-4 h-4 text-primary" /> Token 使用
           </h3>
           <div className="grid grid-cols-3 gap-3 text-center">
             <div>
-              <p className="text-xl font-bold text-primary font-mono">{formatTokens(project.sessionTokens)}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">本次会话</p>
+              <p className="text-xl font-bold text-primary font-mono tabular-nums">{formatTokens(project.sessionTokens)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">本次会话</p>
             </div>
             <div>
-              <p className="text-xl font-bold text-green-400 font-mono">{formatTokens(project.dailyTokens)}</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">今日总计</p>
+              <p className="text-xl font-bold font-mono tabular-nums" style={{ color: 'oklch(0.74 0.19 145)' }}>{formatTokens(project.dailyTokens)}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">今日总计</p>
             </div>
             <div>
-              <p className="text-xl font-bold text-violet-400 font-mono">
+              <p className="text-xl font-bold font-mono tabular-nums" style={{ color: 'oklch(0.66 0.17 280)' }}>
                 ~${((project.dailyTokens / 1000) * 0.003).toFixed(2)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">估算费用</p>
+              <p className="text-[11px] text-muted-foreground mt-1">估算费用</p>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Task List */}
-      <Card className="glass-card p-4 rounded-xl">
-        <h3 className="text-sm font-semibold mb-3">📋 任务清单</h3>
+      <Card className="glass-card rounded-2xl p-5">
+        <h3 className="text-sm font-semibold mb-3">任务清单</h3>
         <TaskList tasks={project.tasks} />
       </Card>
 
       {/* Recent Output */}
       {project.lastOutput && (
-        <Card className="glass-card p-4 rounded-xl">
-          <h3 className="text-sm font-semibold mb-3">📝 最近输出</h3>
-          <pre className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg bg-muted/50 text-muted-foreground max-h-72 overflow-auto">
+        <Card className="glass-card rounded-2xl p-5">
+          <h3 className="text-sm font-semibold mb-3">最近输出</h3>
+          <pre className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg text-muted-foreground max-h-72 overflow-auto" style={{ backgroundColor: 'oklch(0 0 0 / 0.2)' }}>
             {project.lastOutput}
           </pre>
         </Card>
       )}
 
       {/* Project Info */}
-      <Card className="glass-card p-4 rounded-xl">
+      <Card className="glass-card rounded-2xl p-5">
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Calendar className="w-4 h-4" />
-          项目信息
+          <Calendar className="w-4 h-4" /> 项目信息
         </h3>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <span className="text-muted-foreground">路径 </span>
-            <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{project.path}</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+          <div className="flex gap-2">
+            <span className="text-muted-foreground shrink-0">路径</span>
+            <span className="font-mono text-xs px-1.5 py-0.5 rounded truncate" style={{ backgroundColor: 'oklch(0 0 0 / 0.2)' }}>{project.path}</span>
           </div>
-          <div>
-            <span className="text-muted-foreground">PID </span>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground shrink-0">PID</span>
             <span className="font-mono">{project.pid || 'N/A'}</span>
           </div>
-          <div>
-            <span className="text-muted-foreground">创建时间 </span>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground shrink-0">创建</span>
             <span>{new Date(project.createdAt).toLocaleString('zh-CN')}</span>
           </div>
-          <div>
-            <span className="text-muted-foreground">最近活跃 </span>
+          <div className="flex gap-2">
+            <span className="text-muted-foreground shrink-0">活跃</span>
             <span>{new Date(project.lastActiveAt).toLocaleString('zh-CN')}</span>
           </div>
         </div>

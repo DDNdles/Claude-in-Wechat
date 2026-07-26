@@ -8,6 +8,7 @@ import { execSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { shell } from 'electron';
 import { info, warn, error, debug } from '../utils/logger';
 import { isConfigured as directIsConfigured, readAccounts, getActiveAccount, sendMessage } from './wechat-sender';
 import { start as startRelay, stop as stopRelay, isRunning as isRelayRunning, getStatus as getRelayStatus } from './relay-service';
@@ -86,6 +87,7 @@ export function getWeChatAccount(): WeChatAccount | null {
 
 /**
  * Launch WeChat QR login via claude-to-im.
+ * Non-blocking: spawns the login script and opens the QR HTML in the browser.
  */
 export function loginWeChat(): { success: boolean; message: string } {
   if (!isInstalled()) {
@@ -93,16 +95,39 @@ export function loginWeChat(): { success: boolean; message: string } {
   }
 
   try {
-    info('Launching WeChat QR login...');
-    const result = execSync('npm run weixin:login', {
+    info('Launching WeChat QR login (non-blocking)...');
+
+    // Spawn the login script non-blocking so it doesn't freeze the main process.
+    // The script itself polls for scan status; we just kick it off and open the QR.
+    const child = spawn('npm', ['run', 'weixin:login'], {
       cwd: SKILL_DIR,
-      encoding: 'utf-8',
-      timeout: 120_000,
+      shell: process.platform === 'win32',
+      detached: true,
+      stdio: 'ignore',
       windowsHide: false,
-      stdio: 'pipe',
     });
-    info(`WeChat login output: ${result.slice(0, 200)}`);
-    return { success: true, message: '二维码已在浏览器中打开，请用微信扫码' };
+    child.unref();
+
+    // Give the script a moment to generate the QR HTML, then open it in the browser.
+    const ctiHome = process.env.CTI_HOME || path.join(HOME, '.claude-to-im');
+    const qrHtml = path.join(ctiHome, 'runtime', 'weixin-login.html');
+
+    setTimeout(() => {
+      try {
+        if (fs.existsSync(qrHtml)) {
+          shell.openPath(qrHtml);
+          info(`Opened QR HTML in browser: ${qrHtml}`);
+        } else {
+          // Fallback: the script will try to open it itself; also try the URL approach
+          shell.openExternal('https://claude-to-im.local/login').catch(() => {});
+          warn(`QR HTML not found at ${qrHtml}, letting script open it`);
+        }
+      } catch (err) {
+        error('Failed to open QR HTML', err);
+      }
+    }, 2500);
+
+    return { success: true, message: '正在生成二维码，请稍候…浏览器会自动打开扫码页面' };
   } catch (err: any) {
     const msg = err.stderr || err.message || String(err);
     error('WeChat login failed', err);

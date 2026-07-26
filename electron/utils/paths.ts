@@ -1,6 +1,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { homedir } from 'node:os';
+import { app } from 'electron';
 
 /**
  * Centralized path management for Claude in WeChat.
@@ -12,8 +13,38 @@ const HOME = homedir();
 /** Root directory for all Claude-in-Wechat data */
 export const APP_DATA_DIR = path.join(HOME, '.claude-in-wechat');
 
-/** Project storage — where project folders live */
-export const PROJECTS_DIR = path.join(HOME, 'Claude in Wechat', 'projects');
+/**
+ * Resolve the software install root.
+ * - Packaged: the directory containing the app (e.g. C:\Program Files\Claude in WeChat)
+ * - Dev: the project root
+ */
+function getInstallRoot(): string {
+  try {
+    if (app && app.isPackaged) {
+      // app.getAppPath() -> .../resources/app ; install root is 2 levels up
+      return path.dirname(path.dirname(app.getAppPath()));
+    }
+  } catch { /* app not ready, fall through */ }
+  // Dev fallback: project root (two levels up from electron/utils)
+  return path.resolve(__dirname, '..', '..');
+}
+
+/**
+ * Project storage — lives under the software install root:
+ *   C:\Program Files\Claude in WeChat\projects\
+ *   (dev: <project-root>\projects)
+ * Each project is its own subfolder.
+ */
+export function getProjectsDir(): string {
+  return path.join(getInstallRoot(), 'projects');
+}
+
+/**
+ * Projects directory. Resolved eagerly — safe because app.isPackaged is
+ * available immediately after the electron module is imported, and this
+ * module is only imported by the main process.
+ */
+export const PROJECTS_DIR = getProjectsDir();
 
 /** Project registry file */
 export const REGISTRY_FILE = path.join(APP_DATA_DIR, 'projects.json');
@@ -51,7 +82,8 @@ export const HOOKS_DIR = path.join(APP_DATA_DIR, 'hooks');
 
 /** Ensure all required directories exist */
 export function ensureDirs(): void {
-  for (const dir of [APP_DATA_DIR, PROJECTS_DIR, LOG_DIR, RUNTIME_DIR, HOOKS_DIR]) {
+  const projectsDir = getProjectsDir();
+  for (const dir of [APP_DATA_DIR, projectsDir, LOG_DIR, RUNTIME_DIR, HOOKS_DIR]) {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
