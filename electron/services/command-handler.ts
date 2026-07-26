@@ -22,18 +22,11 @@ export interface ParseResult {
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-/** Find a project by name (exact or case-insensitive match) */
+/** Find a project by EXACT name (case-insensitive). No fuzzy matching — /open test1 must not match test. */
 function findProjectByName(name: string) {
+  if (!name || name.trim().length === 0) return null;
   const projects = listProjects();
-  // Exact match first
-  const exact = projects.find(p => p.name.toLowerCase() === name.toLowerCase());
-  if (exact) return exact;
-  // Partial match
-  const partial = projects.find(p =>
-    p.name.toLowerCase().includes(name.toLowerCase()) ||
-    name.toLowerCase().includes(p.name.toLowerCase())
-  );
-  return partial || null;
+  return projects.find(p => p.name.toLowerCase() === name.trim().toLowerCase()) || null;
 }
 
 function formatTokens(n: number): string {
