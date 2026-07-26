@@ -35,11 +35,14 @@ export default function QrLogin({ onConnected, autoStart = true }: QrLoginProps)
     try {
       const resp = await api.wechatQrStart();
       if (resp.success && resp.data?.success && resp.data.qrcode) {
-        setQrcode(resp.data.qrcode);
+        // IMPORTANT: encode qrcode_img_content (the login URL), NOT qrcode (a ticket token).
+        // claude-to-im uses qrcode_img_content as the QR source — encoding `qrcode` gives
+        // an unscannable string. See weixin-login.ts createSession().
+        const qrContent = resp.data.qrcodeImg || resp.data.qrcode;
+        setQrcode(qrContent);
         setStatus('waiting');
         setMessage('请用微信扫码');
-        // Generate QR SVG locally
-        generateQrSvg(resp.data.qrcode).then(setQrSvg).catch(() => setQrSvg(null));
+        generateQrSvg(qrContent).then(setQrSvg).catch(() => setQrSvg(null));
         startPolling();
       } else {
         setStatus('error');

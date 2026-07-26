@@ -115,20 +115,23 @@ function openOnWindows(
   projectId: string, cwd: string, projectName: string, sessionId: string,
 ): { success: boolean; pid?: number; message: string; sessionId?: string } {
   const title = `Claude - ${projectName}`;
-  const escapedCwd = cwd.replace(/"/g, '\\"');
-  // Fixed session-id so WeChat --resume targets the same conversation
-  const cmd = `cd /d "${escapedCwd}" && claude --session-id ${sessionId}`;
+  // Ensure cwd exists
+  if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
+
+  // Use `start` to open a new console window. Quote the inner command carefully:
+  //   start "TITLE" cmd /k "cd /d "C:\path with space" && claude --session-id <sid>"
+  // The inner double-quotes around the path are balanced within the outer quotes.
+  const innerCmd = `cd /d "${cwd}" && claude --session-id ${sessionId}`;
 
   try {
-    const psCmd = `powershell -NoProfile -Command "$p = Start-Process cmd -ArgumentList '/k \\"cd /d ${escapedCwd.replace(/"/g, '\\\\"')} && claude --session-id ${sessionId}\\"' -PassThru -WindowStyle Normal; Write-Output $p.Id"`;
-    const result = execSync(psCmd, { encoding: 'utf-8', timeout: 15_000, windowsHide: true });
+    // Use Start-Process for PID tracking
+    const psCmd = `Start-Process cmd -ArgumentList '/k ${escapeForPowerShell(innerCmd)}' -PassThru -WindowStyle Normal | Select-Object -ExpandProperty Id`;
+    const result = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
+      encoding: 'utf-8', timeout: 15_000, windowsHide: true,
+    });
     const pid = parseInt(result.trim(), 10);
-
     if (pid && !isNaN(pid)) {
-      sessions.set(projectId, {
-        projectId, pid, sessionId, cwd, projectName,
-        startedAt: new Date().toISOString(),
-      });
+      sessions.set(projectId, { projectId, pid, sessionId, cwd, projectName, startedAt: new Date().toISOString() });
       info(`Claude terminal opened: ${projectName} (pid=${pid}, session=${sessionId.slice(0, 8)})`);
       return { success: true, pid, sessionId, message: `已在终端中打开项目「${projectName}」` };
     }
@@ -136,14 +139,18 @@ function openOnWindows(
     warn('PowerShell launch failed, falling back to start', err);
   }
 
-  // Fallback: plain start, no PID tracking
-  const startCmd = `start "${title}" cmd /k "cd /d "${escapedCwd}" && claude --session-id ${sessionId}"`;
-  spawn('cmd', ['/c', startCmd], { stdio: 'ignore', windowsHide: false, detached: true }).unref();
-  sessions.set(projectId, {
-    projectId, pid: 0, sessionId, cwd, projectName,
-    startedAt: new Date().toISOString(),
-  });
+  // Fallback: cmd /c start (no PID)
+  spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
+    cwd, stdio: 'ignore', windowsHide: false, detached: true,
+  }).unref();
+  sessions.set(projectId, { projectId, pid: 0, sessionId, cwd, projectName, startedAt: new Date().toISOString() });
   return { success: true, sessionId, message: `已在终端中打开项目「${projectName}」` };
+}
+
+/** Escape a string so it survives being placed inside PowerShell single-quoted ArgumentList. */
+function escapeForPowerShell(s: string): string {
+  // Wrap in single quotes; double any existing single quotes
+  return "'" + s.replace(/'/g, "''") + "'";
 }
 
 function openOnUnix(
@@ -178,8 +185,10 @@ export function openProjectTerminal(
     if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
 
     if (process.platform === 'win32') {
-      const escapedCwd = cwd.replace(/"/g, '\\"');
-      spawn('cmd', ['/k', `cd /d "${escapedCwd}"`], {
+      const title = `Project - ${projectName}`;
+      const innerCmd = `cd /d "${cwd}"`;
+      // `start "TITLE" cmd /k "cd /d "C:\path""`
+      spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
         cwd, stdio: 'ignore', windowsHide: false, detached: true,
       }).unref();
     } else if (process.platform === 'darwin') {
@@ -196,8 +205,11 @@ export function openProjectTerminal(
 }
 
 /**
- * Forward a task to the project's Claude session via `claude --resume -p`.
- * This runs headless and returns Claude's actual reply.
+ * Forward a task to the project's Claude session via headless `claude -p`.
+ * - If a session jsonl exists on disk → `claude --resume <sid> -p` (continue it)
+ * - If not → `claude --session-id <new-uuid> -p` (create a new fixed-id session,
+ *   which persists to disk so future --resume works)
+ * Returns Claude's actual reply text.
  */
 export async function forwardTask(
   projectId: string,
@@ -206,18 +218,14 @@ export async function forwardTask(
   text: string,
   knownSessionId?: string,
 ): Promise<{ success: boolean; message: string }> {
-  // Resolve session ID: known > tracked > latest jsonl > new
-  let sessionId = knownSessionId || sessions.get(projectId)?.sessionId || findLatestSession(cwd);
-
-  if (!sessionId) {
-    // No existing session — start a fresh headless one (will be persisted by claude)
-    sessionId = newSessionId();
-    info(`No existing session for ${projectName}, starting fresh ${sessionId.slice(0, 8)}`);
-  }
+  // Resolve candidate session ID: known > tracked > latest jsonl
+  const candidateSid = knownSessionId || sessions.get(projectId)?.sessionId || findLatestSession(cwd) || undefined;
+  // Only --resume if the session actually exists on disk (jsonl present)
+  const sessionExists = candidateSid ? sessionJsonlExists(cwd, candidateSid) : false;
 
   try {
-    const reply = await runClaudeResume(cwd, sessionId, text);
-    debug(`Task forwarded to ${projectName} (session ${sessionId.slice(0, 8)}): "${text.slice(0, 50)}"`);
+    const reply = await runClaudeHeadless(cwd, text, sessionExists ? candidateSid : undefined);
+    debug(`Task forwarded to ${projectName}: "${text.slice(0, 50)}"`);
     return { success: true, message: reply };
   } catch (err: any) {
     error(`Failed to forward task to ${projectName}`, err);
@@ -225,18 +233,33 @@ export async function forwardTask(
   }
 }
 
+/** Check whether a session jsonl exists for the given cwd + sessionId. */
+function sessionJsonlExists(cwd: string, sessionId: string): boolean {
+  try {
+    const encoded = encodeCwd(cwd);
+    const file = path.join(CLAUDE_PROJECTS_DIR, encoded, `${sessionId}.jsonl`);
+    return fs.existsSync(file);
+  } catch { return false; }
+}
+
 /**
- * Run `claude --resume <sid> -p "<text>"` headless, return the result text.
+ * Run `claude -p "<text>"` headless. If resumeSid is provided AND exists, resume it;
+ * otherwise start a fresh session (optionally with a fixed --session-id).
+ * stdin is set to 'ignore' to avoid the "no stdin data received" warning.
  */
-function runClaudeResume(cwd: string, sessionId: string, text: string): Promise<string> {
+function runClaudeHeadless(cwd: string, text: string, resumeSid?: string): Promise<string> {
   return new Promise((resolve) => {
-    const child = spawn('claude', [
-      '--resume', sessionId,
-      '-p', text,
-      '--output-format', 'text',
-    ], {
+    const args = ['-p', text, '--output-format', 'text'];
+    if (resumeSid) {
+      args.unshift('--resume', resumeSid);
+    } else {
+      // Fresh session with a fixed UUID so it persists and can be resumed later
+      args.unshift('--session-id', newSessionId());
+    }
+
+    const child = spawn('claude', args, {
       cwd,
-      stdio: 'pipe',
+      stdio: ['ignore', 'pipe', 'pipe'], // stdin ignored → no "no stdin data" warning
       windowsHide: true,
     });
 
@@ -244,7 +267,7 @@ function runClaudeResume(cwd: string, sessionId: string, text: string): Promise<
     let stderr = '';
     const timeout = setTimeout(() => {
       child.kill();
-      resolve(`(执行超时，但任务可能仍在后台运行。session: ${sessionId.slice(0, 8)})`);
+      resolve(`(执行超时，但任务可能仍在后台运行)`);
     }, 600000); // 10 min
 
     child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
@@ -253,13 +276,8 @@ function runClaudeResume(cwd: string, sessionId: string, text: string): Promise<
     child.on('close', (code) => {
       clearTimeout(timeout);
       const out = stdout.trim();
-      if (code === 0 && out) {
-        resolve(out);
-      } else if (out) {
-        resolve(out); // still return partial output
-      } else {
-        resolve(`(无输出，退出码 ${code})${stderr ? '\n' + stderr.slice(0, 200) : ''}`);
-      }
+      if (out) resolve(out);
+      else resolve(`(无输出，退出码 ${code})${stderr ? '\n' + stderr.slice(0, 200) : ''}`);
     });
 
     child.on('error', (err) => {
