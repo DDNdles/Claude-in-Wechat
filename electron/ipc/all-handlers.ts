@@ -17,7 +17,7 @@ import {
   listProjects, createProject, deleteProject, renameProject,
   getProject, openProject, updateProjectStatus, updateTokenUsage,
   getActiveProject, setActiveProject, readProgress, getTokenUsage as pmGetTokenUsage,
-  updateProjectProgress,
+  updateProjectProgress, setProjectSession,
 } from '../services/project-manager';
 
 // Claude launcher
@@ -107,7 +107,15 @@ export function registerAllHandlers(win: BrowserWindow): void {
   // ═════════════════════════════════════════════════════════════════
 
   ipcMain.handle('claude:open-terminal', async (_e, projectId: string, cwd: string, projectName: string) => {
-    try { return respond(true, openClaudeTerminal(projectId, cwd, projectName)); }
+    try {
+      const proj = getProject(projectId);
+      const existingSid = proj.success && proj.data ? proj.data.sessionId : undefined;
+      const result = openClaudeTerminal(projectId, cwd, projectName, existingSid);
+      if (result.success && result.sessionId) {
+        setProjectSession(projectId, result.sessionId, result.pid);
+      }
+      return respond(true, result);
+    }
     catch (err) { return { success: false, error: String(err) } as IpcResponse<any>; }
   });
 

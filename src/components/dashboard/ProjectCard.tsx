@@ -96,7 +96,7 @@ export default function ProjectCard({ project, onClick }: ProjectCardProps) {
   return (
     <>
       <Card
-        className="cursor-pointer transition-all duration-200 hover:border-primary/40 hover:shadow-lg hover:shadow-primary/5 group"
+        className="glass-card glass-card-hover cursor-pointer group rounded-xl"
         onClick={onClick}
       >
         <div className="p-4 space-y-3">

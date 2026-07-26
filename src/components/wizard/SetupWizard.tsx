@@ -145,7 +145,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       </div>
 
       {/* Content */}
-      <Card className="p-6">
+      <Card className="glass-card p-6 rounded-xl">
         {step === 0 && (
           <div className="text-center py-6 space-y-4">
             <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">

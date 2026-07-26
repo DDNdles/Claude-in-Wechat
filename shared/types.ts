@@ -64,6 +64,7 @@ export interface Project {
   sessionTokens: number;   // Current session tokens
   dailyTokens: number;     // Today total tokens
   pid?: number;            // Claude process PID if running
+  sessionId?: string;      // Claude Code session ID (for --resume)
   createdAt: string;       // ISO timestamp
   lastActiveAt: string;    // ISO timestamp
   launchMode: 'wechat' | 'desktop';

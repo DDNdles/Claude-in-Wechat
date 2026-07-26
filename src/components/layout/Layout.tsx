@@ -6,7 +6,6 @@ import {
   FolderOpen,
   Radio,
   Cable,
-  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@shared/components/ui/button';
 import { Badge } from '@shared/components/ui/badge';
@@ -50,19 +49,33 @@ export default function Layout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar */}
-      <aside className="w-56 flex-shrink-0 border-r border-border flex flex-col bg-card">
+      {/* Sidebar — translucent glass */}
+      <aside
+        className="w-60 flex-shrink-0 flex flex-col"
+        style={{
+          backgroundColor: 'var(--sidebar)',
+          backdropFilter: 'blur(16px) saturate(140%)',
+          WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+          borderRight: '1px solid var(--sidebar-border)',
+        }}
+      >
         {/* Logo */}
         <div className="px-4 py-5 draggable">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/15 flex items-center justify-center">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center"
+              style={{
+                background: 'linear-gradient(135deg, oklch(0.72 0.19 145 / 0.25), oklch(0.72 0.19 145 / 0.08))',
+                boxShadow: '0 0 16px -2px oklch(0.72 0.19 145 / 0.4)',
+              }}
+            >
               <Cable className="w-4.5 h-4.5 text-primary" />
             </div>
             <div>
-              <h1 className="text-sm font-bold text-foreground leading-tight">
+              <h1 className="text-sm font-bold text-foreground leading-tight tracking-tight-title">
                 Claude in WeChat
               </h1>
-              <p className="text-[11px] text-muted-foreground">v0.5.4</p>
+              <p className="text-[11px] text-muted-foreground">v0.5.5</p>
             </div>
           </div>
         </div>
@@ -70,7 +83,7 @@ export default function Layout({
         <Separator />
 
         {/* Navigation */}
-        <ScrollArea className="flex-1 px-2 py-3">
+        <ScrollArea className="flex-1 px-2.5 py-3">
           <nav className="space-y-1">
             {navItems.map((item) => {
               const Icon = item.icon;
@@ -81,15 +94,15 @@ export default function Layout({
                   variant={isActive ? 'secondary' : 'ghost'}
                   size="sm"
                   className={cn(
-                    'w-full justify-start gap-2.5 h-9',
-                    isActive && 'bg-secondary font-medium',
+                    'w-full justify-start gap-2.5 h-9 rounded-lg',
+                    isActive && 'font-medium',
                   )}
                   onClick={() => onNavigate(item.id)}
                 >
                   <Icon className="w-4 h-4" />
                   <span className="flex-1 text-left">{item.label}</span>
                   {item.badge && (
-                    <Badge variant="default" className="h-5 px-1.5 text-[10px] bg-primary/90">
+                    <Badge variant="default" className="h-5 px-1.5 text-[10px]">
                       {item.badge}
                     </Badge>
                   )}
@@ -100,22 +113,29 @@ export default function Layout({
         </ScrollArea>
 
         {/* Status footer */}
-        <div className="p-3 border-t border-border space-y-2">
+        <div className="px-3 py-3 space-y-2.5" style={{ borderTop: '1px solid var(--sidebar-border)' }}>
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground">
-              <Radio className={cn('w-3 h-3', running ? 'text-green-400' : 'text-muted-foreground/50')} />
+              <Radio className={cn('w-3 h-3', running && 'text-primary')} />
               <span>桥接</span>
             </div>
-            <Badge variant={running ? 'default' : 'secondary'} className="h-5 px-1.5 text-[10px]">
-              {running ? '在线' : '离线'}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full',
+                  running && 'status-glow-running',
+                )}
+                style={{ backgroundColor: running ? 'var(--primary)' : 'oklch(0.55 0 0 / 0.5)' }}
+              />
+              <span className="text-muted-foreground">{running ? '在线' : '离线'}</span>
+            </div>
           </div>
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 text-muted-foreground">
               <FolderOpen className="w-3 h-3" />
               <span>项目</span>
             </div>
-            <span className="text-muted-foreground tabular-nums">{projectCount}</span>
+            <span className="text-foreground/80 tabular-nums font-medium">{projectCount}</span>
           </div>
         </div>
       </aside>

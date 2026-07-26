@@ -107,7 +107,7 @@ export default function SettingsPanel() {
       <h2 className="text-2xl font-bold tracking-tight">设置</h2>
 
       {/* WeChat Bridge */}
-      <Card className="p-5 space-y-4">
+      <Card className="glass-card p-5 space-y-4 rounded-xl">
         <div className="flex items-center gap-2.5">
           <Cable className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">微信桥接</h3>
@@ -158,7 +158,7 @@ export default function SettingsPanel() {
       </Card>
 
       {/* Claude Code Hooks */}
-      <Card className="p-5 space-y-4">
+      <Card className="glass-card p-5 space-y-4 rounded-xl">
         <div className="flex items-center gap-2.5">
           <Wrench className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">Claude Code Hooks</h3>
@@ -193,7 +193,7 @@ export default function SettingsPanel() {
       </Card>
 
       {/* General Settings */}
-      <Card className="p-5 space-y-4">
+      <Card className="glass-card p-5 space-y-4 rounded-xl">
         <div className="flex items-center gap-2.5">
           <Monitor className="w-5 h-5 text-primary" />
           <h3 className="font-semibold">通用设置</h3>

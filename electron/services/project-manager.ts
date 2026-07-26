@@ -7,6 +7,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import os from 'node:os';
 import { execSync } from 'node:child_process';
 import type {
   Project,
@@ -24,6 +25,8 @@ import {
 } from '../utils/paths.js';
 
 import { info, warn, error, debug } from '../utils/logger.js';
+
+const HOME = os.homedir();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Constants
@@ -421,102 +424,86 @@ export function isProjectRunning(id: string): boolean {
   return false;
 }
 
-// External project auto-sync
+/** Persist sessionId and pid for a project (called after launching terminal) */
+export function setProjectSession(id: string, sessionId: string, pid?: number): void {
+  const projects = readRegistry();
+  const idx = projects.findIndex((p) => p.id === id);
+  if (idx === -1) return;
+  projects[idx].sessionId = sessionId;
+  if (pid !== undefined) projects[idx].pid = pid;
+  writeRegistry(projects);
+}
+
+// External project auto-sync via Claude session jsonl scan
 
 export interface ScannedProject {
-  pid: number;
   cwd: string;
   name: string;
-  commandLine: string;
+  sessionId: string;
+  lastActiveAt: string;
+}
+
+const CLAUDE_PROJECTS_DIR = path.join(HOME, '.claude', 'projects');
+
+/** Decode Claude's encoded project dir name back to a real path.
+ *  e.g. "C--Users-30959--foo" -> "C:\Users\30959\foo" */
+function decodeCwd(encoded: string): string {
+  // Claude encodes by replacing : \ / with -, yielding e.g. C--Users-30959--foo
+  // The first char is the drive letter, then "--", then path segments joined by "--"
+  // Reconstruct: first char + ":" + "\" + rest with "--" -> "\"
+  if (encoded.length < 2) return encoded;
+  const drive = encoded[0];
+  const rest = encoded.slice(1).replace(/^-+/, '').replace(/-+/g, '\\');
+  return `${drive}:\\${rest}`;
 }
 
 /**
- * Scan for running claude.exe processes that are NOT already registered.
- * Returns newly discovered projects that should be imported.
+ * Scan ~/.claude/projects/* for session jsonls.
+ * Each subdirectory = one project cwd; newest jsonl = active session.
+ * Returns projects not yet in the registry.
  */
 export function scanExternalProjects(): ScannedProject[] {
   try {
-    if (process.platform !== 'win32') return [];
+    if (!fs.existsSync(CLAUDE_PROJECTS_DIR)) return [];
 
-    // Get all claude.exe processes with their command lines
-    const result = execSync(
-      'wmic process where "name=\'claude.exe\'" get ProcessId,CommandLine /format:csv 2>nul',
-      { encoding: 'utf-8', windowsHide: true },
-    );
+    const registered = readRegistry();
+    const knownPaths = new Set(registered.map(p => p.path.toLowerCase()));
 
-    const registeredProjects = readRegistry();
-    const knownPaths = new Set(registeredProjects.map(p => p.path.toLowerCase()));
-    const knownPids = new Set(
-      registeredProjects
-        .filter(p => p.pid && isProcessAlive(p.pid!))
-        .map(p => p.pid),
-    );
     const discovered: ScannedProject[] = [];
 
-    for (const line of result.split('\n')) {
-      if (!line.includes('claude')) continue;
+    const dirs = fs.readdirSync(CLAUDE_PROJECTS_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory());
 
-      // Parse CSV: NodeName,ProcessId,CommandLine
-      const parts = line.split(',');
-      const pid = parseInt(parts[1], 10);
-      if (!pid || isNaN(pid)) continue;
-
-      const commandLine = parts.slice(2).join(',').replace(/\r/g, '');
-      if (!commandLine.toLowerCase().includes('claude')) continue;
-
-      // Extract working directory from claude process
-      // Claude Code's typical invocation: node ... claude (with cwd being the project)
-      // For wmic, we need to find the actual cwd - use PowerShell
-      let cwd = '';
+    for (const d of dirs) {
+      const dirPath = path.join(CLAUDE_PROJECTS_DIR, d.name);
       try {
-        const cwdResult = execSync(
-          `powershell -NoProfile -Command "(Get-WmiObject Win32_Process -Filter 'ProcessId=${pid}').ExecutablePath | Split-Path" 2>nul`,
-          { encoding: 'utf-8', windowsHide: true },
-        );
-        const exePath = cwdResult.trim();
-        // Try getting parent cmd.exe's working directory
-        const parentResult = execSync(
-          `wmic process where "processid=${pid}" get parentprocessid /format:csv 2>nul`,
-          { encoding: 'utf-8', windowsHide: true },
-        );
-        const ppidLine = parentResult.split('\n')[1];
-        if (ppidLine) {
-          const ppid = parseInt(ppidLine.split(',')[1], 10);
-          if (ppid && !isNaN(ppid)) {
-            // Get cmd.exe's working directory if parent is cmd
-            const cmdCwd = execSync(
-              `powershell -NoProfile -Command "try { $p = Get-WmiObject Win32_Process -Filter 'ProcessId=${ppid}'; if ($p.Name -eq 'cmd.exe') { $sw = Get-WmiObject Win32_LogicalProgramGroupItem | Out-Null; $p.CommandLine -match '.*cd /d ''([^'']+).*' | Out-Null; $Matches[1] } } catch { '' }" 2>nul`,
-              { encoding: 'utf-8', windowsHide: true },
-            );
-            cwd = cmdCwd.trim();
-          }
-        }
-      } catch {
-        // Fallback: try to guess from command line
-      }
+        const jsonls = fs.readdirSync(dirPath)
+          .filter(f => f.endsWith('.jsonl'))
+          .map(f => ({
+            name: f,
+            mtime: fs.statSync(path.join(dirPath, f)).mtimeMs,
+          }))
+          .sort((a, b) => b.mtime - a.mtime);
 
-      if (!cwd) {
-        // Fallback: scan known project directories for best match
-        if (fs.existsSync(PROJECTS_DIR)) {
-          const dirs = fs.readdirSync(PROJECTS_DIR, { withFileTypes: true })
-            .filter(d => d.isDirectory());
-          for (const d of dirs) {
-            const fullPath = path.join(PROJECTS_DIR, d.name);
-            // Check if this dir has a .claude directory (marker of a Claude project)
-            if (fs.existsSync(path.join(fullPath, '.claude'))) {
-              cwd = fullPath;
-              break;
-            }
-          }
-        }
-      }
+        if (jsonls.length === 0) continue;
 
-      const normalizedCwd = cwd.toLowerCase();
-      if (!cwd || knownPaths.has(normalizedCwd)) continue;
+        const cwd = decodeCwd(d.name);
+        // Only consider dirs that actually exist on disk (real projects)
+        if (!fs.existsSync(cwd)) continue;
+        if (knownPaths.has(cwd.toLowerCase())) continue;
 
-      const name = path.basename(cwd);
+        // Only import if the session was active recently (last 7 days)
+        const newest = jsonls[0];
+        const ageDays = (Date.now() - newest.mtime) / (1000 * 60 * 60 * 24);
+        if (ageDays > 7) continue;
 
-      discovered.push({ pid, cwd, name, commandLine });
+        discovered.push({
+          cwd,
+          name: path.basename(cwd),
+          sessionId: newest.name.replace(/\.jsonl$/, ''),
+          lastActiveAt: new Date(newest.mtime).toISOString(),
+        });
+      } catch { /* skip unreadable dir */ }
     }
 
     return discovered;
@@ -526,97 +513,90 @@ export function scanExternalProjects(): ScannedProject[] {
   }
 }
 
-/**
- * Auto-import discovered external projects into the registry.
- */
+/** Auto-import discovered external projects into the registry. */
 export function importExternalProjects(discovered: ScannedProject[]): Project[] {
   const imported: Project[] = [];
+  const projects = readRegistry();
+  const now = new Date().toISOString();
 
   for (const ext of discovered) {
     try {
-      const now = new Date().toISOString();
+      // Double-check not already present (race safety)
+      if (projects.some(p => p.path.toLowerCase() === ext.cwd.toLowerCase())) continue;
+
       const project: Project = {
         id: generateId(),
         name: ext.name,
         path: ext.cwd,
-        status: 'running',
+        status: 'idle',
         progress: 0,
         tasks: [],
         sessionTokens: 0,
         dailyTokens: 0,
-        pid: ext.pid,
-        createdAt: now,
-        lastActiveAt: now,
+        sessionId: ext.sessionId,
+        createdAt: ext.lastActiveAt,
+        lastActiveAt: ext.lastActiveAt,
         launchMode: 'desktop',
       };
 
-      const projects = readRegistry();
       projects.push(project);
-      writeRegistry(projects);
       imported.push(project);
-      info(`Auto-imported external project: ${ext.name} (pid=${ext.pid})`);
+      info(`Auto-imported external project: ${ext.name} (session=${ext.sessionId.slice(0, 8)})`);
     } catch (err) {
       warn(`Failed to import external project: ${ext.name}`, err);
     }
   }
 
+  if (imported.length > 0) writeRegistry(projects);
   return imported;
 }
 
 /**
- * Sync external project states: update PIDs for running projects,
- * mark projects with dead PIDs as idle.
+ * Sync external project states: refresh sessionId from latest jsonl,
+ * mark projects whose session hasn't been touched in 7 days as idle.
  */
 export function syncExternalProjectStates(): number {
   let changed = 0;
   const projects = readRegistry();
-  const now = new Date().toISOString();
 
   for (const proj of projects) {
-    if (proj.launchMode === 'desktop') {
-      // Check if a claude process is running in this directory
-      const orphanPid = findClaudeInDir(proj.path);
-      if (orphanPid && proj.status !== 'running') {
-        proj.status = 'running';
-        proj.pid = orphanPid;
-        proj.lastActiveAt = now;
-        changed++;
-      } else if (!orphanPid && proj.status === 'running' && !isProcessAlive(proj.pid || -1)) {
-        proj.status = 'idle';
-        proj.pid = undefined;
-        proj.lastActiveAt = now;
+    if (proj.launchMode !== 'desktop') continue;
+    try {
+      const encoded = proj.path.replace(/[:\\\/]/g, '-').replace(/^-+|-+$/g, '');
+      const dir = path.join(CLAUDE_PROJECTS_DIR, encoded);
+      if (!fs.existsSync(dir)) continue;
+
+      const jsonls = fs.readdirSync(dir)
+        .filter(f => f.endsWith('.jsonl'))
+        .map(f => ({ name: f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+
+      if (jsonls.length === 0) continue;
+
+      const newest = jsonls[0];
+      const newSid = newest.name.replace(/\.jsonl$/, '');
+      const ageDays = (Date.now() - newest.mtime) / (1000 * 60 * 60 * 24);
+
+      // Update sessionId if it changed
+      if (proj.sessionId !== newSid) {
+        proj.sessionId = newSid;
+        proj.lastActiveAt = new Date(newest.mtime).toISOString();
         changed++;
       }
-    }
+      // Mark idle if stale
+      if (ageDays > 7 && proj.status === 'running') {
+        proj.status = 'idle';
+        changed++;
+      } else if (ageDays < 1 && proj.status === 'idle') {
+        proj.status = 'running';
+        changed++;
+      }
+    } catch { /* skip */ }
   }
 
   if (changed > 0) {
     writeRegistry(projects);
     info(`Synced ${changed} external project state(s)`);
   }
-
   return changed;
-}
-
-function findClaudeInDir(cwd: string): number | null {
-  try {
-    if (process.platform !== 'win32') return null;
-    const result = execSync(
-      'wmic process where "name=\'claude.exe\'" get ProcessId,CommandLine /format:csv 2>nul',
-      { encoding: 'utf-8', windowsHide: true },
-    );
-    const norm = cwd.toLowerCase().replace(/\\/g, '\\\\');
-    for (const line of result.split('\n')) {
-      if (line.toLowerCase().includes(norm)) {
-        const match = line.match(/\d+/);
-        if (match) {
-          const pid = parseInt(match[0], 10);
-          if (pid && isProcessAlive(pid)) return pid;
-        }
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }

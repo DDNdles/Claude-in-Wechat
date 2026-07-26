@@ -111,7 +111,7 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
 
       {/* Progress + Tokens */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Card className="p-4 space-y-3">
+        <Card className="glass-card p-4 space-y-3 rounded-xl">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Zap className="w-4 h-4 text-primary" />
             进度
@@ -127,7 +127,7 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
           </div>
         </Card>
 
-        <Card className="p-4 space-y-3">
+        <Card className="glass-card p-4 space-y-3 rounded-xl">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Coins className="w-4 h-4 text-primary" />
             Token 使用
@@ -152,14 +152,14 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
       </div>
 
       {/* Task List */}
-      <Card className="p-4">
+      <Card className="glass-card p-4 rounded-xl">
         <h3 className="text-sm font-semibold mb-3">📋 任务清单</h3>
         <TaskList tasks={project.tasks} />
       </Card>
 
       {/* Recent Output */}
       {project.lastOutput && (
-        <Card className="p-4">
+        <Card className="glass-card p-4 rounded-xl">
           <h3 className="text-sm font-semibold mb-3">📝 最近输出</h3>
           <pre className="text-xs font-mono whitespace-pre-wrap p-3 rounded-lg bg-muted/50 text-muted-foreground max-h-72 overflow-auto">
             {project.lastOutput}
@@ -168,7 +168,7 @@ export default function ProjectDetail({ projectId, onBack }: ProjectDetailProps)
       )}
 
       {/* Project Info */}
-      <Card className="p-4">
+      <Card className="glass-card p-4 rounded-xl">
         <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
           <Calendar className="w-4 h-4" />
           项目信息

@@ -175,19 +175,30 @@ async function processMessage(msg: any): Promise<void> {
   const active = getActiveProject();
   if (active.success && active.data) {
     const project = active.data;
-    const result = await forwardTask(project.id, project.path, project.name, text);
+    const result = await forwardTask(project.id, project.path, project.name, text, project.sessionId);
     if (result.success) {
-      await sendMessage(`Forwarded to project "${project.name}".`);
-      if (result.message && result.message.length < 500) {
-        await sendMessage(result.message);
+      await sendMessage(`已转发到项目「${project.name}」，Claude 回复：`);
+      // Send Claude's actual reply, chunked if long
+      const reply = result.message || '(无回复)';
+      const chunks = reply.length > 1500 ? chunkText(reply, 1500) : [reply];
+      for (const chunk of chunks) {
+        await sendMessage(chunk);
       }
     } else {
-      await sendMessage(`Forward failed: ${result.message}`);
+      await sendMessage(`转发失败: ${result.message}`);
     }
     info(`Task forwarded to project: ${project.name}`);
   } else {
-    await sendMessage('No active project. Use /open <name> or /new <name> first.');
+    await sendMessage('没有活跃项目。请先用 /open 项目名 打开一个项目，或 /new 项目名 创建新项目。');
   }
+}
+
+function chunkText(text: string, size: number): string[] {
+  const chunks: string[] = [];
+  for (let i = 0; i < text.length; i += size) {
+    chunks.push(text.slice(i, i + size));
+  }
+  return chunks;
 }
 
 // Internal: Renderer Notifications
