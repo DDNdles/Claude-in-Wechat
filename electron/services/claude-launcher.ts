@@ -118,39 +118,21 @@ function openOnWindows(
   // Ensure cwd exists
   if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
 
-  // Use `start` to open a new console window. Quote the inner command carefully:
-  //   start "TITLE" cmd /k "cd /d "C:\path with space" && claude --session-id <sid>"
-  // The inner double-quotes around the path are balanced within the outer quotes.
+  // Use `start` — the most reliable way to open a new visible console on Windows.
+  // `start "Title" cmd /k "cd /d "C:\path" && claude --session-id <sid>"`
   const innerCmd = `cd /d "${cwd}" && claude --session-id ${sessionId}`;
-
-  try {
-    // Use Start-Process for PID tracking
-    const psCmd = `Start-Process cmd -ArgumentList '/k ${escapeForPowerShell(innerCmd)}' -PassThru -WindowStyle Normal | Select-Object -ExpandProperty Id`;
-    const result = execSync(`powershell -NoProfile -Command "${psCmd.replace(/"/g, '\\"')}"`, {
-      encoding: 'utf-8', timeout: 15_000, windowsHide: true,
-    });
-    const pid = parseInt(result.trim(), 10);
-    if (pid && !isNaN(pid)) {
-      sessions.set(projectId, { projectId, pid, sessionId, cwd, projectName, startedAt: new Date().toISOString() });
-      info(`Claude terminal opened: ${projectName} (pid=${pid}, session=${sessionId.slice(0, 8)})`);
-      return { success: true, pid, sessionId, message: `已在终端中打开项目「${projectName}」` };
-    }
-  } catch (err) {
-    warn('PowerShell launch failed, falling back to start', err);
-  }
-
-  // Fallback: cmd /c start (no PID)
-  spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
+  const child = spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
     cwd, stdio: 'ignore', windowsHide: false, detached: true,
-  }).unref();
-  sessions.set(projectId, { projectId, pid: 0, sessionId, cwd, projectName, startedAt: new Date().toISOString() });
-  return { success: true, sessionId, message: `已在终端中打开项目「${projectName}」` };
-}
+  });
+  child.unref();
 
-/** Escape a string so it survives being placed inside PowerShell single-quoted ArgumentList. */
-function escapeForPowerShell(s: string): string {
-  // Wrap in single quotes; double any existing single quotes
-  return "'" + s.replace(/'/g, "''") + "'";
+  const pid = child.pid;
+  sessions.set(projectId, {
+    projectId, pid: pid || 0, sessionId, cwd, projectName,
+    startedAt: new Date().toISOString(),
+  });
+  info(`Claude terminal opened: ${projectName} (session=${sessionId.slice(0, 8)}, pid=${pid || '?'})`);
+  return { success: true, pid: pid || undefined, sessionId, message: `已在终端中打开项目「${projectName}」` };
 }
 
 function openOnUnix(

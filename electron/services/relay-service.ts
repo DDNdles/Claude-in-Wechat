@@ -177,12 +177,14 @@ async function processMessage(msg: any): Promise<void> {
     const project = active.data;
     const result = await forwardTask(project.id, project.path, project.name, text, project.sessionId);
     if (result.success) {
-      await sendMessage(`已转发到项目「${project.name}」，Claude 回复：`);
-      // Send Claude's actual reply, chunked if long
+      // Send ONLY Claude's reply — avoid double/triple messages.
+      // Claude reply may be long; truncate if needed.
       const reply = result.message || '(无回复)';
-      const chunks = reply.length > 1500 ? chunkText(reply, 1500) : [reply];
-      for (const chunk of chunks) {
-        await sendMessage(chunk);
+      if (reply.length > 1500) {
+        const chunks = chunkText(reply, 1500);
+        for (const chunk of chunks) await sendMessage(chunk);
+      } else {
+        await sendMessage(reply);
       }
     } else {
       await sendMessage(`转发失败: ${result.message}`);

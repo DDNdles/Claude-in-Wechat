@@ -14,24 +14,30 @@ const HOME = homedir();
 export const APP_DATA_DIR = path.join(HOME, '.claude-in-wechat');
 
 /**
- * Resolve a writable project storage directory.
- * Uses app.getPath('userData') which is always user-writable
- * (e.g. %APPDATA%\Claude in WeChat), avoiding EPERM on Program Files.
- * Dev fallback: <project-root>/projects
+ * Resolve the install root directory where the app exe lives.
+ * - Packaged (NSIS): e.g. %LOCALAPPDATA%\Programs\Claude in WeChat
+ * - Dev: project root (<repo>/)
+ *
+ * Projects are stored in <installRoot>/projects/ so they sit next to
+ * the exe and are trivially discoverable.
  */
-function getProjectsDir(): string {
+function getInstallRoot(): string {
   try {
-    if (app && app.getPath) {
-      return path.join(app.getPath('userData'), 'projects');
+    if (app && app.isPackaged) {
+      // app.getPath('exe') = C:\...\Claude in WeChat\Claude in WeChat.exe
+      return path.dirname(app.getPath('exe'));
     }
-  } catch { /* app not ready, fall through */ }
-  return path.resolve(__dirname, '..', '..', 'projects');
+  } catch { /* not ready yet, fall through */ }
+  // Dev: __dirname = dist-electron/, go up 2 = project root
+  return path.resolve(__dirname, '..', '..');
 }
 
-/**
- * Projects directory. Resolved eagerly — safe because app.getPath is
- * available immediately after the electron module is imported.
- */
+function getProjectsDir(): string {
+  return path.join(getInstallRoot(), 'projects');
+}
+
+/** Project storage — lives under the install directory. Always user-writable
+ *  because NSIS perMachine:false installs to %LOCALAPPDATA%. */
 export const PROJECTS_DIR = getProjectsDir();
 
 /** Project registry file */
