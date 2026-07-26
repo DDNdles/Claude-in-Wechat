@@ -14,30 +14,25 @@ const HOME = homedir();
 export const APP_DATA_DIR = path.join(HOME, '.claude-in-wechat');
 
 /**
- * Resolve the install root directory where the app exe lives.
- * - Packaged (NSIS): e.g. %LOCALAPPDATA%\Programs\Claude in WeChat
- * - Dev: project root (<repo>/)
+ * Resolve a guaranteed-writable project storage directory.
+ * - Packaged: app.getPath('userData')/projects (e.g. %APPDATA%\Claude in WeChat\projects)
+ *   This is always user-writable regardless of install location (Program Files or not).
+ * - Dev: <project-root>/projects
  *
- * Projects are stored in <installRoot>/projects/ so they sit next to
- * the exe and are trivially discoverable.
+ * This is the standard Windows app pattern: exe may be in Program Files, but
+ * user data always goes to %APPDATA% (or %LOCALAPPDATA%).
  */
-function getInstallRoot(): string {
+function getProjectsDir(): string {
   try {
-    if (app && app.isPackaged) {
-      // app.getPath('exe') = C:\...\Claude in WeChat\Claude in WeChat.exe
-      return path.dirname(app.getPath('exe'));
+    if (app && app.getPath) {
+      return path.join(app.getPath('userData'), 'projects');
     }
   } catch { /* not ready yet, fall through */ }
-  // Dev: __dirname = dist-electron/, go up 2 = project root
-  return path.resolve(__dirname, '..', '..');
+  // Dev fallback
+  return path.resolve(__dirname, '..', '..', 'projects');
 }
 
-function getProjectsDir(): string {
-  return path.join(getInstallRoot(), 'projects');
-}
-
-/** Project storage — lives under the install directory. Always user-writable
- *  because NSIS perMachine:false installs to %LOCALAPPDATA%. */
+/** Project storage — always writable, never EPERM. */
 export const PROJECTS_DIR = getProjectsDir();
 
 /** Project registry file */

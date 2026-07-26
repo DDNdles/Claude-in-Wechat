@@ -25,6 +25,7 @@ import {
 } from '../utils/paths.js';
 
 import { info, warn, error, debug } from '../utils/logger.js';
+import { refreshProjectProgress } from './progress-watcher.js';
 
 const HOME = os.homedir();
 
@@ -127,6 +128,20 @@ export function listProjects(): Project[] {
     // Verify project folder exists
     if (!fs.existsSync(live.path)) {
       live.status = live.status === 'running' ? 'error' : live.status;
+    }
+
+    // Real-time progress from session jsonl (for running/desktop projects)
+    if (live.status === 'running' || live.launchMode === 'desktop') {
+      try {
+        const rtProgress = refreshProjectProgress(live.id, live.path);
+        if (rtProgress.toolUseCount > 0) {
+          live.progress = rtProgress.progress;
+          // If session is active but status is idle, mark as running
+          if (rtProgress.sessionActive && live.status === 'idle') {
+            live.status = 'running';
+          }
+        }
+      } catch { /* progress watcher shouldn't break list */ }
     }
 
     result.push(live);
