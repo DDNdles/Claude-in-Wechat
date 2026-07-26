@@ -19,6 +19,9 @@ const electronAPI = {
   claudeOpenProjectDir: (projectId, cwd, projectName) => ipcRenderer.invoke('claude:open-project-terminal', projectId, cwd, projectName),
 
   wechatLogin: () => ipcRenderer.invoke('wechat:login'),
+  wechatQrStart: () => ipcRenderer.invoke('wechat:qr-start'),
+  wechatQrStatus: () => ipcRenderer.invoke('wechat:qr-status'),
+  wechatQrCancel: () => ipcRenderer.invoke('wechat:qr-cancel'),
   wechatAccount: () => ipcRenderer.invoke('wechat:account'),
   wechatStatus: () => ipcRenderer.invoke('wechat:status'),
   wechatStartBridge: () => ipcRenderer.invoke('wechat:start-bridge'),

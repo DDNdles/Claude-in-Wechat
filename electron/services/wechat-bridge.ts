@@ -220,6 +220,165 @@ export async function sendMessageDirect(text: string): Promise<{ success: boolea
   return sendMessage(text);
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Live QR Login — fetch QR from iLink API, poll status, save account.
+// No external script, no local HTML file.
+// ═══════════════════════════════════════════════════════════════
+
+const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com';
+const ILINK_CDN_BASE_URL = 'https://ilink-cdn.weixin.qq.com';
+
+interface QrLoginSession {
+  qrcode: string;            // the QR code string to render
+  qrcodeImgContent?: string; // optional base64 image
+  status: 'waiting' | 'scanned' | 'confirmed' | 'expired';
+  startedAt: number;
+}
+
+let activeQrSession: QrLoginSession | null = null;
+let qrPollTimer: ReturnType<typeof setInterval> | null = null;
+
+const QR_TTL_MS = 5 * 60_000;
+const QR_POLL_MS = 3_000;
+const QR_MAX_REFRESH = 3;
+
+function normalizeAccountId(ilinkBotId: string): string {
+  return ilinkBotId.replace(/[^a-zA-Z0-9_-]/g, '');
+}
+
+function saveAccount(account: {
+  accountId: string; userId: string; baseUrl: string;
+  cdnBaseUrl: string; token: string; name: string; enabled: boolean;
+}): void {
+  try {
+    let accounts: any[] = [];
+    if (fs.existsSync(ACCOUNTS_FILE)) {
+      accounts = JSON.parse(fs.readFileSync(ACCOUNTS_FILE, 'utf-8'));
+      if (!Array.isArray(accounts)) accounts = [];
+    }
+    const now = new Date().toISOString();
+    const existing = accounts.find((a: any) => a.accountId === account.accountId);
+    if (existing) {
+      Object.assign(existing, {
+        userId: account.userId, baseUrl: account.baseUrl,
+        cdnBaseUrl: account.cdnBaseUrl, token: account.token,
+        name: account.name, enabled: account.enabled,
+        lastLoginAt: now, updatedAt: now,
+      });
+    } else {
+      accounts.unshift({
+        accountId: account.accountId, userId: account.userId,
+        baseUrl: account.baseUrl, cdnBaseUrl: account.cdnBaseUrl,
+        token: account.token, name: account.name, enabled: account.enabled,
+        lastLoginAt: now, createdAt: now, updatedAt: now,
+      });
+    }
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), 'utf-8');
+    info(`WeChat account saved: ${account.accountId}`);
+  } catch (err) {
+    error('Failed to save WeChat account', err);
+  }
+}
+
+/**
+ * Start a live QR login session. Fetches a fresh QR code from the iLink API.
+ */
+export async function startQrLogin(): Promise<{ success: boolean; qrcode?: string; qrcodeImg?: string; message: string }> {
+  try {
+    // Stop any existing poll
+    if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+
+    const url = `${ILINK_BASE_URL}/ilink/bot/get_bot_qrcode?bot_type=3`;
+    info('Fetching live WeChat QR code...');
+    const resp = await fetch(url, { method: 'GET' });
+    if (!resp.ok) throw new Error(`QR API returned ${resp.status}`);
+    const data = await resp.json();
+
+    if (!data.qrcode) {
+      return { success: false, message: data.errmsg || '未能获取二维码' };
+    }
+
+    activeQrSession = {
+      qrcode: data.qrcode,
+      qrcodeImgContent: data.qrcode_img_content,
+      status: 'waiting',
+      startedAt: Date.now(),
+    };
+    info('Live QR session started');
+    return { success: true, qrcode: data.qrcode, qrcodeImg: data.qrcode_img_content, message: '请用微信扫码' };
+  } catch (err: any) {
+    error('Failed to start QR login', err);
+    return { success: false, message: `获取二维码失败: ${err.message}` };
+  }
+}
+
+/**
+ * Check the status of the active QR login session.
+ * Polls the iLink API; on confirm, saves the account.
+ */
+export async function checkQrLoginStatus(): Promise<{
+  status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'none';
+  message: string;
+}> {
+  if (!activeQrSession) return { status: 'none', message: '无活跃的登录会话' };
+
+  // Expired by TTL
+  if (Date.now() - activeQrSession.startedAt > QR_TTL_MS) {
+    activeQrSession.status = 'expired';
+    return { status: 'expired', message: '二维码已过期，请重新获取' };
+  }
+
+  try {
+    const url = `${ILINK_BASE_URL}/ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(activeQrSession.qrcode)}`;
+    const resp = await fetch(url, { method: 'GET' });
+    if (!resp.ok) throw new Error(`status API returned ${resp.status}`);
+    const data = await resp.json();
+
+    const st = data.status as string | undefined;
+    switch (st) {
+      case 'wait':
+        activeQrSession.status = 'waiting';
+        return { status: 'waiting', message: '等待扫码…' };
+      case 'scaned':
+        activeQrSession.status = 'scanned';
+        return { status: 'scanned', message: '已扫码，请在手机确认' };
+      case 'confirmed': {
+        if (!data.bot_token || !data.ilink_bot_id) {
+          return { status: 'expired', message: '登录确认但未返回凭证' };
+        }
+        const accountId = normalizeAccountId(data.ilink_bot_id);
+        saveAccount({
+          accountId,
+          userId: data.ilink_user_id || '',
+          baseUrl: data.baseurl || ILINK_BASE_URL,
+          cdnBaseUrl: ILINK_CDN_BASE_URL,
+          token: data.bot_token,
+          name: accountId,
+          enabled: true,
+        });
+        activeQrSession.status = 'confirmed';
+        info(`WeChat login confirmed: ${accountId}`);
+        return { status: 'confirmed', message: `登录成功：${accountId}` };
+      }
+      case 'expired':
+        activeQrSession.status = 'expired';
+        return { status: 'expired', message: '二维码已过期' };
+      default:
+        return { status: 'waiting', message: '等待扫码…' };
+    }
+  } catch (err: any) {
+    warn('QR status poll failed', err);
+    return { status: 'waiting', message: '等待扫码…' };
+  }
+}
+
+/** Cancel/forget the active QR session. */
+export function cancelQrLogin(): void {
+  if (qrPollTimer) { clearInterval(qrPollTimer); qrPollTimer = null; }
+  activeQrSession = null;
+}
+
 // ── Internal ───────────────────────────────────────────────────────
 
 function isPidAlive(pid: number): boolean {

@@ -49,6 +49,15 @@ const electronAPI = {
   wechatLogin: (): Promise<IpcResponse<{ success: boolean; message: string }>> =>
     ipcRenderer.invoke('wechat:login'),
 
+  wechatQrStart: (): Promise<IpcResponse<{ success: boolean; qrcode?: string; qrcodeImg?: string; message: string }>> =>
+    ipcRenderer.invoke('wechat:qr-start'),
+
+  wechatQrStatus: (): Promise<IpcResponse<{ status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'none'; message: string }>> =>
+    ipcRenderer.invoke('wechat:qr-status'),
+
+  wechatQrCancel: (): Promise<IpcResponse<void>> =>
+    ipcRenderer.invoke('wechat:qr-cancel'),
+
   wechatAccount: (): Promise<IpcResponse<{ accountId: string; userId: string; name?: string } | null>> =>
     ipcRenderer.invoke('wechat:account'),
 

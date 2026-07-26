@@ -14,35 +14,23 @@ const HOME = homedir();
 export const APP_DATA_DIR = path.join(HOME, '.claude-in-wechat');
 
 /**
- * Resolve the software install root.
- * - Packaged: the directory containing the app (e.g. C:\Program Files\Claude in WeChat)
- * - Dev: the project root
+ * Resolve a writable project storage directory.
+ * Uses app.getPath('userData') which is always user-writable
+ * (e.g. %APPDATA%\Claude in WeChat), avoiding EPERM on Program Files.
+ * Dev fallback: <project-root>/projects
  */
-function getInstallRoot(): string {
+function getProjectsDir(): string {
   try {
-    if (app && app.isPackaged) {
-      // app.getAppPath() -> .../resources/app ; install root is 2 levels up
-      return path.dirname(path.dirname(app.getAppPath()));
+    if (app && app.getPath) {
+      return path.join(app.getPath('userData'), 'projects');
     }
   } catch { /* app not ready, fall through */ }
-  // Dev fallback: project root (two levels up from electron/utils)
-  return path.resolve(__dirname, '..', '..');
+  return path.resolve(__dirname, '..', '..', 'projects');
 }
 
 /**
- * Project storage — lives under the software install root:
- *   C:\Program Files\Claude in WeChat\projects\
- *   (dev: <project-root>\projects)
- * Each project is its own subfolder.
- */
-export function getProjectsDir(): string {
-  return path.join(getInstallRoot(), 'projects');
-}
-
-/**
- * Projects directory. Resolved eagerly — safe because app.isPackaged is
- * available immediately after the electron module is imported, and this
- * module is only imported by the main process.
+ * Projects directory. Resolved eagerly — safe because app.getPath is
+ * available immediately after the electron module is imported.
  */
 export const PROJECTS_DIR = getProjectsDir();
 

@@ -118,6 +118,9 @@ declare global {
       claudeOpenTerminal: (projectId: string, cwd: string, projectName: string) => Promise<IpcResponse<{ success: boolean; pid?: number; message: string }>>;
       claudeOpenProjectDir: (projectId: string, cwd: string, projectName: string) => Promise<IpcResponse<{ success: boolean; message: string }>>;
       wechatLogin: () => Promise<IpcResponse<{ success: boolean; message: string }>>;
+      wechatQrStart: () => Promise<IpcResponse<{ success: boolean; qrcode?: string; qrcodeImg?: string; message: string }>>;
+      wechatQrStatus: () => Promise<IpcResponse<{ status: 'waiting' | 'scanned' | 'confirmed' | 'expired' | 'none'; message: string }>>;
+      wechatQrCancel: () => Promise<IpcResponse<void>>;
       wechatAccount: () => Promise<IpcResponse<{ accountId: string; userId: string; name?: string } | null>>;
       wechatStatus: () => Promise<IpcResponse<{ running: boolean; hasAccount: boolean; configured: boolean; polling: boolean; pid: number | null }>>;
       wechatStartBridge: () => Promise<IpcResponse<{ success: boolean; message: string }>>;

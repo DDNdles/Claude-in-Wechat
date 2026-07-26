@@ -10,8 +10,6 @@ import { Separator } from '@shared/components/ui/separator';
 import { toast } from 'sonner';
 import {
   Cable,
-  Link,
-  Plug,
   Play,
   Square,
   QrCode,
@@ -20,6 +18,7 @@ import {
   Bell,
   Sun,
 } from 'lucide-react';
+import QrLogin from '../wechat/QrLogin';
 
 export default function SettingsPanel() {
   const { settings, updateSetting } = useSettingsStore();
@@ -28,6 +27,7 @@ export default function SettingsPanel() {
   const [hookMsg, setHookMsg] = useState('');
   const [hookStatus, setHookStatus] = useState<{ installed: boolean }>({ installed: false });
   const [loading, setLoading] = useState(false);
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     refreshStatus();
@@ -132,7 +132,7 @@ export default function SettingsPanel() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button onClick={handleWeChatLogin} disabled={loading}>
+          <Button onClick={() => setShowQr(!showQr)}>
             <QrCode className="w-4 h-4 mr-1.5" />
             {hasAccount ? '重新扫码绑定' : '扫码绑定微信'}
           </Button>
@@ -149,12 +149,21 @@ export default function SettingsPanel() {
             </Button>
           )}
         </div>
-        {wechatMsg && (
+
+        {showQr && (
+          <div className="pt-2">
+            <QrLogin autoStart={true} onConnected={async () => { setShowQr(false); await refreshStatus(); }} />
+          </div>
+        )}
+
+        {wechatMsg && !showQr && (
           <p className="text-sm text-muted-foreground">{wechatMsg}</p>
         )}
-        <p className="text-xs text-muted-foreground">
-          扫码绑定使用 claude-to-im 的微信 iLink Bot。点击按钮后会打开浏览器显示二维码。
-        </p>
+        {!showQr && (
+          <p className="text-xs text-muted-foreground">
+            点击「扫码绑定微信」生成实时二维码，用微信扫码完成绑定。
+          </p>
+        )}
       </Card>
 
       {/* Claude Code Hooks */}

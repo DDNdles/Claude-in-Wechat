@@ -27,6 +27,7 @@ import { openClaudeTerminal, openProjectTerminal, hasSession, killSession } from
 import {
   loginWeChat, getWeChatAccount, getBridgeStatus, startBridge, stopBridge,
   getBridgeLogs, isConfigured, hasWeChatAccount, sendMessageDirect,
+  startQrLogin, checkQrLoginStatus, cancelQrLogin,
 } from '../services/wechat-bridge';
 
 // Hooks
@@ -140,6 +141,22 @@ export function registerAllHandlers(win: BrowserWindow): void {
 
   ipcMain.handle('wechat:login', async () => {
     try { return respond(true, loginWeChat()); }
+    catch (err) { return { success: false, error: String(err) } as IpcResponse<any>; }
+  });
+
+  // Live QR login — fetch QR, poll status, save account on confirm
+  ipcMain.handle('wechat:qr-start', async () => {
+    try { return respond(true, await startQrLogin()); }
+    catch (err) { return { success: false, error: String(err) } as IpcResponse<any>; }
+  });
+
+  ipcMain.handle('wechat:qr-status', async () => {
+    try { return respond(true, await checkQrLoginStatus()); }
+    catch (err) { return { success: false, error: String(err) } as IpcResponse<any>; }
+  });
+
+  ipcMain.handle('wechat:qr-cancel', async () => {
+    try { cancelQrLogin(); return respond(true); }
     catch (err) { return { success: false, error: String(err) } as IpcResponse<any>; }
   });
 

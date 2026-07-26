@@ -7,7 +7,6 @@ import { cn } from '@shared/lib/utils';
 import { toast } from 'sonner';
 import {
   Cable,
-  QrCode,
   Wrench,
   CheckCircle2,
   ArrowRight,
@@ -15,6 +14,7 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react';
+import QrLogin from '../wechat/QrLogin';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -172,35 +172,19 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           <div className="py-4 space-y-4">
             <h2 className="text-xl font-bold tracking-tight">绑定微信</h2>
             <p className="text-sm text-muted-foreground">
-              使用 claude-to-im 微信扫码登录。点击按钮后浏览器会打开二维码页面。
+              用微信扫描下方实时二维码完成绑定。
             </p>
-            <div className="space-y-3">
-              <Button className="w-full" onClick={checkWeChat} disabled={wechatStatus === 'checking'}>
-                {wechatStatus === 'checking' ? '检测中...' :
-                 wechatStatus === 'connected' ? '重新检测' : '检测微信连接'}
-              </Button>
-              {wechatStatus === 'needLogin' && (
-                <Button className="w-full" variant="outline" onClick={handleWeChatLogin}>
-                  <QrCode className="w-4 h-4 mr-1.5" />
-                  扫码绑定微信
-                </Button>
-              )}
-              {wechatStatus === 'connected' && (
-                <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                  <p className="text-primary text-sm font-medium flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4" />
-                    微信已连接
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">{wechatInfo}</p>
+            {wechatStatus === 'connected' ? (
+              <div className="p-4 rounded-xl bg-primary/5 border border-primary/20 flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-primary" />
+                <div>
+                  <p className="text-primary text-sm font-medium">微信已连接</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{wechatInfo}</p>
                 </div>
-              )}
-              {wechatStatus === 'failed' && (
-                <p className="text-sm text-destructive">{wechatInfo}</p>
-              )}
-              {wechatInfo && wechatStatus !== 'connected' && wechatStatus !== 'failed' && (
-                <p className="text-sm text-muted-foreground">{wechatInfo}</p>
-              )}
-            </div>
+              </div>
+            ) : (
+              <QrLogin onConnected={() => { setWechatStatus('connected'); setWechatInfo('已绑定'); }} />
+            )}
           </div>
         )}
 
