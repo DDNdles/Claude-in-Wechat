@@ -20,6 +20,7 @@ import {
   PROJECTS_DIR,
   REGISTRY_FILE,
   RUNTIME_DIR,
+  DELETED_PROJECTS_FILE,
   projectProgressFile,
   ACTIVE_PROJECT_FILE,
 } from '../utils/paths.js';
@@ -213,6 +214,10 @@ export function deleteProject(id: string): IpcResponse<void> {
 
     projects.splice(idx, 1);
     writeRegistry(projects);
+
+    // Blacklist the path so the external scanner doesn't re-import it
+    addDeletedPath(proj.path);
+
     info(`Deleted project: ${proj.name} (${id}) — folder preserved at ${proj.path}`);
     return { success: true };
   } catch (err) {
@@ -220,6 +225,30 @@ export function deleteProject(id: string): IpcResponse<void> {
     error('deleteProject failed', err);
     return { success: false, error: msg };
   }
+}
+
+// ── Deleted project blacklist (prevents scanner from re-importing) ──
+
+function readDeletedPaths(): Set<string> {
+  try {
+    if (!fs.existsSync(DELETED_PROJECTS_FILE)) return new Set();
+    const data = JSON.parse(fs.readFileSync(DELETED_PROJECTS_FILE, 'utf-8'));
+    if (!Array.isArray(data)) return new Set();
+    return new Set(data.map((s: string) => s.toLowerCase()));
+  } catch { return new Set(); }
+}
+
+function addDeletedPath(projectPath: string): void {
+  try {
+    const paths = readDeletedPaths();
+    paths.add(projectPath.toLowerCase());
+    if (!fs.existsSync(RUNTIME_DIR)) fs.mkdirSync(RUNTIME_DIR, { recursive: true });
+    fs.writeFileSync(DELETED_PROJECTS_FILE, JSON.stringify([...paths], null, 2), 'utf-8');
+  } catch (err) { warn('Failed to write deleted projects blacklist', err); }
+}
+
+function isPathDeleted(projectPath: string): boolean {
+  return readDeletedPaths().has(projectPath.toLowerCase());
 }
 
 export function renameProject(id: string, newName: string): IpcResponse<Project> {
@@ -509,6 +538,8 @@ export function scanExternalProjects(): ScannedProject[] {
         // Only consider dirs that actually exist on disk (real projects)
         if (!fs.existsSync(cwd)) continue;
         if (knownPaths.has(cwd.toLowerCase())) continue;
+        // Skip paths that were explicitly deleted by the user
+        if (isPathDeleted(cwd)) continue;
 
         // Only import if the session was active recently (last 7 days)
         const newest = jsonls[0];

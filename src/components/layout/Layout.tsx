@@ -44,7 +44,7 @@ export default function Layout({
             </div>
             <div>
               <h1 className="text-[15px] font-bold leading-tight tracking-tight-title">Claude in WeChat</h1>
-              <p className="text-[11px] text-muted-foreground mt-0.5">v0.5.11</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">v0.5.12</p>
             </div>
           </div>
         </div>

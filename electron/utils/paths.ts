@@ -60,6 +60,9 @@ export function projectProgressFile(projectId: string): string {
 /** Active project state file */
 export const ACTIVE_PROJECT_FILE = path.join(RUNTIME_DIR, 'active-project.json');
 
+/** Deleted project paths (blacklist for scanner) */
+export const DELETED_PROJECTS_FILE = path.join(RUNTIME_DIR, 'deleted-projects.json');
+
 /** Relay cursor for WeChat polling */
 export const RELAY_CURSOR_FILE = path.join(RUNTIME_DIR, 'relay-cursor.json');
 

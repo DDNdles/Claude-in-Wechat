@@ -1,6 +1,6 @@
 {
   "name": "claude-in-wechat",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "description": "轻量化可接入微信的 Claude Code 远程管理桌面应用 — Desktop app bridging WeChat with local Claude Code for remote project management",
   "author": "Claude in WeChat",
   "license": "MIT",
