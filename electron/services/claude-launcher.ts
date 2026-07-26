@@ -3,7 +3,7 @@
 // WeChat tasks run via `claude --resume <sid> -p` in headless mode,
 // sharing the SAME session as the visible desktop terminal.
 
-import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn, exec } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -114,25 +114,23 @@ export function openClaudeTerminal(
 function openOnWindows(
   projectId: string, cwd: string, projectName: string, sessionId: string,
 ): { success: boolean; pid?: number; message: string; sessionId?: string } {
-  const title = `Claude - ${projectName}`;
-  // Ensure cwd exists
   if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
 
-  // Use `start` — the most reliable way to open a new visible console on Windows.
-  // `start "Title" cmd /k "cd /d "C:\path" && claude --session-id <sid>"`
-  const innerCmd = `cd /d "${cwd}" && claude --session-id ${sessionId}`;
-  const child = spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
-    cwd, stdio: 'ignore', windowsHide: false, detached: true,
-  });
-  child.unref();
+  // cmd.exe quoting: inside a "..." string, "" is an escaped double-quote.
+  // So `cd /d ""C:\my path""` is the safe way to embed a path with spaces.
+  const safePath = cwd.replace(/"/g, '""');
+  const cmd = `start "Claude - ${projectName}" cmd /k "cd /d ""${safePath}"" && claude --session-id ${sessionId}"`;
 
-  const pid = child.pid;
+  exec(cmd, { windowsHide: false }, (err) => {
+    if (err) warn(`Terminal start error for ${projectName}: ${err.message}`);
+  });
+
   sessions.set(projectId, {
-    projectId, pid: pid || 0, sessionId, cwd, projectName,
+    projectId, pid: 0, sessionId, cwd, projectName,
     startedAt: new Date().toISOString(),
   });
-  info(`Claude terminal opened: ${projectName} (session=${sessionId.slice(0, 8)}, pid=${pid || '?'})`);
-  return { success: true, pid: pid || undefined, sessionId, message: `已在终端中打开项目「${projectName}」` };
+  info(`Claude terminal opened: ${projectName} (session=${sessionId.slice(0, 8)})`);
+  return { success: true, sessionId, message: `已在终端中打开项目「${projectName}」` };
 }
 
 function openOnUnix(
@@ -167,12 +165,10 @@ export function openProjectTerminal(
     if (!fs.existsSync(cwd)) fs.mkdirSync(cwd, { recursive: true });
 
     if (process.platform === 'win32') {
-      const title = `Project - ${projectName}`;
-      const innerCmd = `cd /d "${cwd}"`;
-      // `start "TITLE" cmd /k "cd /d "C:\path""`
-      spawn('cmd', ['/c', 'start', `"${title}"`, 'cmd', '/k', innerCmd], {
-        cwd, stdio: 'ignore', windowsHide: false, detached: true,
-      }).unref();
+      const safePath = cwd.replace(/"/g, '""');
+      exec(`start "Project - ${projectName}" cmd /k "cd /d ""${safePath}"""`, { windowsHide: false }, (err) => {
+        if (err) warn(`Terminal start error for ${projectName}: ${err.message}`);
+      });
     } else if (process.platform === 'darwin') {
       const escaped = cwd.replace(/'/g, "'\\''");
       execSync(`osascript -e 'tell app "Terminal" to do script "cd ${escaped}"'`, { timeout: 5000 });
