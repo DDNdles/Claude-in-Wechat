@@ -26,6 +26,7 @@ import { createConfigService } from './services/config-service';
 import { AutoStarter } from './services/auto-starter';
 import { start as startRelay, stop as stopRelay, setMainWindow } from './services/relay-service';
 import { scanExternalProjects, importExternalProjects, syncExternalProjectStates } from './services/project-manager';
+import { killAllSessions } from './services/claude-launcher';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -160,6 +161,7 @@ async function loadWindowContent(win: BrowserWindow): Promise<void> {
 
 function quitApp(): void {
   isQuitting = true;
+  try { killAllSessions(); } catch { /* cleanup */ }
   try { stopRelay(); } catch { /* cleanup */ }
   if (tray) { tray.destroy(); tray = null; }
   if (mainWindow) { mainWindow.destroy(); mainWindow = null; }
@@ -247,12 +249,14 @@ if (!gotTheLock) {
   });
   app.on('before-quit', () => {
     isQuitting = true;
+    try { killAllSessions(); } catch { /* cleanup */ }
     try { stopRelay(); } catch { /* cleanup */ }
     if (tray) { tray.destroy(); tray = null; }
   });
   if (isWindows) {
     (app as any).on('session-end', () => {
       isQuitting = true;
+      try { killAllSessions(); } catch { /* cleanup */ }
       try { stopRelay(); } catch { /* cleanup */ }
       if (tray) { tray.destroy(); tray = null; }
     });

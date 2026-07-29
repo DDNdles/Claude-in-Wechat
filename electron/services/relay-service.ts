@@ -36,6 +36,7 @@ let lastPollAt: string | null = null;
 let lastError: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 let pollInterval = 5000;
+let consecutiveFailures = 0;
 
 // Public API
 
@@ -97,13 +98,26 @@ export async function sendReply(text: string): Promise<boolean> {
 
 // Internal: Polling
 
+function scheduleNextPoll(): void {
+  if (!polling) return;
+  if (pollingTimer) clearInterval(pollingTimer);
+  const delay = consecutiveFailures > 0
+    ? Math.min(60000, pollInterval * Math.pow(2, consecutiveFailures))
+    : pollInterval;
+  pollingTimer = setInterval(pollOnce, delay);
+  if (consecutiveFailures > 0) {
+    debug(`Poll backoff: ${delay}ms (failures: ${consecutiveFailures})`);
+  }
+}
+
 function startPolling(): void {
   if (polling) return;
   if (!isConfigured()) return;
 
   polling = true;
+  consecutiveFailures = 0;
+  // Kick off the first poll; it will self-reschedule via scheduleNextPoll()
   pollOnce();
-  pollingTimer = setInterval(pollOnce, pollInterval);
   info(`Polling started (interval: ${pollInterval}ms)`);
 }
 
@@ -123,6 +137,7 @@ async function pollOnce(): Promise<void> {
     const result = await getUpdates();
     lastPollAt = new Date().toISOString();
     lastError = null;
+    consecutiveFailures = 0; // reset on success
 
     if (result.msgs && result.msgs.length > 0) {
       for (const msg of result.msgs) {
@@ -130,8 +145,12 @@ async function pollOnce(): Promise<void> {
       }
     }
   } catch (err: any) {
+    consecutiveFailures++;
     lastError = err.message || String(err);
-    warn('Poll error', err);
+    warn(`Poll error (failure #${consecutiveFailures})`, err);
+  } finally {
+    // Reschedule with appropriate backoff
+    scheduleNextPoll();
   }
 }
 

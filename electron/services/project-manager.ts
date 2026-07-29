@@ -113,6 +113,7 @@ function claudeAvailable(): boolean {
 export function listProjects(): Project[] {
   const projects = readRegistry();
   const result: Project[] = [];
+  let hasCorrections = false;
 
   for (const proj of projects) {
     const live = { ...proj };
@@ -123,12 +124,14 @@ export function listProjects(): Project[] {
         live.status = 'idle';
         live.pid = undefined;
         live.lastOutput = undefined;
+        hasCorrections = true;
       }
     }
 
     // Verify project folder exists
     if (!fs.existsSync(live.path)) {
       live.status = live.status === 'running' ? 'error' : live.status;
+      hasCorrections = true;
     }
 
     // Real-time progress + tokens from session jsonl
@@ -139,6 +142,7 @@ export function listProjects(): Project[] {
           live.progress = rtProgress.progress;
           if (rtProgress.sessionActive && live.status === 'idle') {
             live.status = 'running';
+            hasCorrections = true;
           }
         }
         // Update token counts in real time
@@ -151,8 +155,10 @@ export function listProjects(): Project[] {
     result.push(live);
   }
 
-  // Persist corrections
-  writeRegistry(result);
+  // Persist corrections only when something actually changed (PID died, folder gone)
+  if (hasCorrections) {
+    writeRegistry(result);
+  }
   return result;
 }
 

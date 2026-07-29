@@ -149,7 +149,21 @@ function writeCursor(cursor: string): void {
 
 // ── HTTP Helpers ──────────────────────────────────────────────────
 
-async function apiPost(endpoint: string, body: object, account: WeChatAccount): Promise<Response> {
+/**
+ * Fetch with AbortController timeout.
+ * On timeout the fetch is aborted so the caller doesn't hang indefinitely.
+ */
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function apiPost(endpoint: string, body: object, account: WeChatAccount, timeoutMs = 60000): Promise<Response> {
   const url = `${account.baseUrl}/ilink/bot/${endpoint}`;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -160,16 +174,14 @@ async function apiPost(endpoint: string, body: object, account: WeChatAccount): 
 
   debug(`API POST ${endpoint}`);
 
-  const resp = await fetch(url, {
+  return fetchWithTimeout(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
-  });
-
-  return resp;
+  }, timeoutMs);
 }
 
-async function apiGet(endpoint: string, account: WeChatAccount): Promise<Response> {
+async function apiGet(endpoint: string, account: WeChatAccount, timeoutMs = 30000): Promise<Response> {
   const url = `${account.baseUrl}/ilink/bot/${endpoint}`;
   const headers: Record<string, string> = {
     'AuthorizationType': 'ilink_bot_token',
@@ -179,8 +191,7 @@ async function apiGet(endpoint: string, account: WeChatAccount): Promise<Respons
 
   debug(`API GET ${endpoint}`);
 
-  const resp = await fetch(url, { headers });
-  return resp;
+  return fetchWithTimeout(url, { headers }, timeoutMs);
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
@@ -322,7 +333,7 @@ export async function getUpdates(): Promise<GetUpdatesResponse> {
   };
 
   try {
-    const resp = await apiPost('getupdates', body, account);
+    const resp = await apiPost('getupdates', body, account, 30000);
     const data = await resp.json();
 
     if (resp.ok && data.errcode === undefined || data.errcode === 0) {
@@ -348,7 +359,8 @@ export async function getUpdates(): Promise<GetUpdatesResponse> {
 
     return { msgs: [], get_updates_buf: cursor };
   } catch (err: any) {
-    if (err.name === 'TimeoutError' || err.message?.includes('timeout')) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError' || err.message?.includes('timeout') || err.message?.includes('abort')) {
+      debug('Poll timeout/abort — will retry');
       return { msgs: [], get_updates_buf: cursor };
     }
     warn('Failed to poll WeChat messages', err);

@@ -24,6 +24,19 @@ interface TerminalSession {
 
 const sessions = new Map<string, TerminalSession>();
 
+/** Track headless Claude process PIDs so they can be cleaned up on quit. */
+const headlessPids = new Set<number>();
+
+/** Register a headless Claude child PID for lifecycle management. */
+export function trackHeadlessProcess(pid: number): void {
+  if (pid && pid > 0) headlessPids.add(pid);
+}
+
+/** Remove a PID once the process has exited naturally. */
+function untrackHeadlessProcess(pid: number): void {
+  headlessPids.delete(pid);
+}
+
 // Generate a fresh session UUID
 function newSessionId(): string {
   return crypto.randomUUID();
@@ -224,6 +237,10 @@ function sessionJsonlExists(cwd: string, sessionId: string): boolean {
  * Run `claude -p "<text>"` headless. If resumeSid is provided AND exists, resume it;
  * otherwise start a fresh session (optionally with a fixed --session-id).
  * stdin is set to 'ignore' to avoid the "no stdin data received" warning.
+ *
+ * Timeout (default 24 hours, override with WXG_HEADLESS_TIMEOUT env var):
+ * On timeout the promise resolves with a status message but the child process
+ * is NOT killed — it continues in background and writes to the session jsonl.
  */
 function runClaudeHeadless(cwd: string, text: string, resumeSid?: string): Promise<string> {
   return new Promise((resolve) => {
@@ -241,18 +258,26 @@ function runClaudeHeadless(cwd: string, text: string, resumeSid?: string): Promi
       windowsHide: true,
     });
 
+    // Track this headless process so it can be cleaned up on app quit
+    if (child.pid) trackHeadlessProcess(child.pid);
+
     let stdout = '';
     let stderr = '';
+    const HEADLESS_TIMEOUT_MS = parseInt(process.env.WXG_HEADLESS_TIMEOUT || '86400000', 10); // 24 hours default
     const timeout = setTimeout(() => {
-      child.kill();
-      resolve(`(执行超时，但任务可能仍在后台运行)`);
-    }, 600000); // 10 min
+      // Don't kill the child — let it continue running in background.
+      // Complex tasks (research, multi-phase work) often exceed timeout but
+      // will complete and persist output to the session jsonl. Users can
+      // check progress with "查询进度" in WeChat.
+      resolve(`(执行超时，任务仍在后台继续运行，可回复"查询进度"查看)`);
+    }, HEADLESS_TIMEOUT_MS);
 
     child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
     child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
 
     child.on('close', (code) => {
       clearTimeout(timeout);
+      if (child.pid) untrackHeadlessProcess(child.pid);
       const out = stdout.trim();
       if (out) resolve(out);
       else resolve(`(无输出，退出码 ${code})${stderr ? '\n' + stderr.slice(0, 200) : ''}`);
@@ -260,6 +285,7 @@ function runClaudeHeadless(cwd: string, text: string, resumeSid?: string): Promi
 
     child.on('error', (err) => {
       clearTimeout(timeout);
+      if (child.pid) untrackHeadlessProcess(child.pid);
       resolve(`Claude Code 启动失败: ${err.message}`);
     });
   });
@@ -344,10 +370,16 @@ export function killSession(projectId: string): boolean {
 }
 
 export function killAllSessions(): void {
+  // Clean up terminal sessions
   for (const [id, s] of sessions) {
     try { if (s.pid) killProcess(s.pid); } catch { /* ok */ }
     sessions.delete(id);
   }
+  // Clean up headless Claude processes
+  for (const pid of headlessPids) {
+    try { killProcess(pid); } catch { /* ok */ }
+  }
+  headlessPids.clear();
 }
 
 // ── Internal ───────────────────────────────────────────────────────
